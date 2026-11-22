@@ -1,0 +1,31 @@
+{
+  "name": "learningedge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "render:scene": "tsx scripts/render-scene.ts",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.2.0",
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-shell": "^2.2.1",
+    "konva": "^10.10.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tauri-apps/cli": "^2.12.6",
+    "@types/node": "^26.6.6",
+    "svelte": "^5.59.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vite": "^8.3.8",
+    "vitest": "^3.1.1"
+  }
+}
