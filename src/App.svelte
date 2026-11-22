@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import denseFixture from "../fixtures/dense_overflow_scenes.json";
   import KonvaPreview from "./lib/components/KonvaPreview.svelte";
+  import LectureToVideo from "./lib/components/LectureToVideo.svelte";
   import type { SceneSpec } from "./lib/renderer/types";
   import {
     invokeTauri,
@@ -14,9 +15,9 @@
     type RunArtifactsBundle,
   } from "./lib/tauriApi";
 
-  type TabId = "pipeline" | "preview" | "presets" | "kg";
+  type TabId = "lecture" | "pipeline" | "preview" | "presets" | "kg";
 
-  let activeTab = $state<TabId>("pipeline");
+  let activeTab = $state<TabId>("lecture");
   let tauriMode = $state(isTauriRuntime());
   let runs = $state<PipelineRunRecord[]>([]);
   let activeBundle = $state<RunArtifactsBundle | null>(null);
@@ -179,6 +180,9 @@
       <p class="subtitle">Local-First Lecture Notes, Verified Storyboards & Motion-Graphics Explainers</p>
     </div>
     <nav class="tabs">
+      <button class:active={activeTab === "lecture"} onclick={() => (activeTab = "lecture")}>
+        Lecture to Video
+      </button>
       <button class:active={activeTab === "pipeline"} onclick={() => (activeTab = "pipeline")}>
         Pipeline & Traceability
       </button>
@@ -198,7 +202,9 @@
     <div class="notice card">{statusNotice}</div>
   {/if}
 
-  {#if activeTab === "pipeline"}
+  {#if activeTab === "lecture"}
+    <LectureToVideo />
+  {:else if activeTab === "pipeline"}
     <section class="grid-2">
       <div class="card">
         <div class="row-between">
@@ -441,12 +447,15 @@
 
 <style>
   .shell {
-    max-width: 1380px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    min-height: 100vh;
+    box-sizing: border-box;
+    background: #000000;
   }
   .topbar {
     display: flex;
@@ -454,16 +463,18 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 12px;
+    border-bottom: 1px solid #222222;
+    padding-bottom: 14px;
   }
   h1 {
     margin: 0;
-    font-size: 24px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
   }
   .subtitle {
     margin: 2px 0 0;
-    color: var(--muted);
+    color: #888888;
     font-size: 13px;
   }
   .tabs {
@@ -472,16 +483,22 @@
     flex-wrap: wrap;
   }
   .tabs button {
-    background: var(--panel);
-    border: 1px solid var(--border);
+    background: #0d0d0d;
+    border: 1px solid #222222;
     border-radius: 8px;
-    padding: 8px 14px;
-    color: var(--muted);
+    padding: 7px 14px;
+    color: #888888;
+    font-size: 13px;
+    transition: all 0.15s ease;
+  }
+  .tabs button:hover {
+    color: #ffffff;
+    border-color: #444444;
   }
   .tabs button.active {
-    background: #0c4a6e;
-    border-color: var(--accent);
-    color: var(--text);
+    background: #ffffff;
+    border-color: #ffffff;
+    color: #000000;
     font-weight: 600;
   }
   .grid-2 {

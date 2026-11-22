@@ -1,12 +1,12 @@
 :root {
   color-scheme: dark;
-  --bg: #0b1120;
-  --panel: #111b31;
-  --panel-alt: #16233f;
-  --border: #253659;
-  --text: #f8fafc;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --panel-alt: #121212;
+  --border: #262626;
+  --text: #ffffff;
+  --muted: #a3a3a3;
+  --accent: #ffffff;
   --emerald: #34d399;
   --amber: #fbbf24;
   --rose: #fb7185;
@@ -19,8 +19,8 @@
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: #000000;
+  color: #ffffff;
   line-height: 1.5;
 }
 
