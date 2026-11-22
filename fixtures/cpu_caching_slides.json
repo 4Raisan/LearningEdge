@@ -1,0 +1,41 @@
+{
+  "lecture_id": "lec-cpu-caching-01",
+  "materials": [
+    {
+      "id": "slide-01",
+      "kind": "slide",
+      "source_ref": "slide:1",
+      "title": "The Memory Wall & Locality",
+      "page_or_slide": 1,
+      "section_ref": "section:intro-memory-wall",
+      "text": "CPU register access takes ~1 cycle while DRAM latency exceeds 200 cycles. Temporal locality reuses hot loop variables; spatial locality fetches 64-byte cache lines for contiguous array scans."
+    },
+    {
+      "id": "slide-02",
+      "kind": "slide",
+      "source_ref": "slide:2",
+      "title": "Address Breakdown & Hit/Miss Path",
+      "page_or_slide": 2,
+      "section_ref": "section:lookup-pipeline",
+      "text": "Address fields: [ Tag | Set Index | Block Offset ]. Cache hit delivers requested bytes immediately. Cache miss stalls core, fetches 64B line from L2/L3/DRAM, and evicts an LRU victim."
+    },
+    {
+      "id": "slide-03",
+      "kind": "slide",
+      "source_ref": "slide:3",
+      "title": "L1 / L2 / L3 Capacity vs Latency",
+      "page_or_slide": 3,
+      "section_ref": "section:hierarchy-table",
+      "text": "Typical tiers: L1 = 32 KB per core (~4 cycles), L2 = 256 KB to 512 KB (~12 cycles), L3 = 8 MB to 32 MB shared (~40 cycles), DRAM (~200+ cycles)."
+    },
+    {
+      "id": "slide-04",
+      "kind": "slide",
+      "source_ref": "slide:4",
+      "title": "Write Policies Review (Draft Erratum)",
+      "page_or_slide": 4,
+      "section_ref": "section:write-policies",
+      "text": "Write-back relies on a dirty bit and defers memory writes until eviction. Erratum note: an older draft slide stated L1 capacity is 32 MB per core; verify against lecture recording (32 KB)."
+    }
+  ]
+}
