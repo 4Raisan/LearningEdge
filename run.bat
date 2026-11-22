@@ -2,6 +2,12 @@
 setlocal
 pushd "%~dp0" || goto :failed
 
+netstat -ano -p tcp | findstr /R /C:":1420 .*LISTENING" >nul
+if not errorlevel 1 (
+    echo Port 1420 is already in use. Close the running LearningEdge window or dev server, then try again.
+    goto :failed
+)
+
 if exist "%USERPROFILE%\.cargo\bin\cargo.exe" set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
 
 where pnpm >nul 2>&1 || (
