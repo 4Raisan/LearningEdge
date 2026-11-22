@@ -1,0 +1,244 @@
+{
+  "scenes": [
+    {
+      "scene_id": "dense-concept-01",
+      "base_scene_id": "dense-concept-01",
+      "part_index": 1,
+      "part_total": 1,
+      "title": "Comprehensive Cache Coherence & Memory Consistency Mechanisms",
+      "subtitle": "Dense multi-factor breakdown with long architectural terminology",
+      "template": "concept_reveal",
+      "note_point_ids": ["np-05", "np-06"],
+      "source_refs": ["seg-05", "seg-06", "slide:3", "slide:4"],
+      "narration_sentences": [
+        "Multicore processors coordinate private caches using directory-based invalidation and snooping state transitions.",
+        "Each core tracks whether a sixty-four-byte cache line is Modified, Exclusive, Shared, or Invalid to prevent stale reads.",
+        "Store buffers hide write latency locally while memory fences enforce ordering across visible core boundaries.",
+        "False sharing occurs when independent threads modify different fields that happen to reside on the exact same cache line.",
+        "Hardware prefetchers detect sequential stride patterns early and issue speculative fills before demand misses stall execution.",
+        "Non-uniform memory access topologies add remote socket hop penalties when threads allocate pages far from their execution core.",
+        "Translation lookaside buffer shootdowns synchronize virtual-to-physical page table invalidations across every active hardware thread.",
+        "Structuring hot data per thread and padding contended counters prevents cross-core cache line bouncing under heavy parallel load."
+      ],
+      "items": [
+        {
+          "id": "dc-1",
+          "badge": "MESI-M",
+          "label": "ModifiedDirtyCacheLineOwnershipState",
+          "detail": "Core holds the sole valid dirty copy; any remote read request forces a cache-to-cache write-back or memory flush before sharing.",
+          "cue_index": 0
+        },
+        {
+          "id": "dc-2",
+          "badge": "MESI-E/S",
+          "label": "ExclusiveVsSharedReadOnlyCoherenceTransitions",
+          "detail": "Exclusive permits silent local upgrade to Modified on write, whereas Shared requires broadcasting an invalidation request across the interconnect.",
+          "cue_index": 1
+        },
+        {
+          "id": "dc-3",
+          "badge": "STORE-BUF",
+          "label": "StoreBufferAndStoreForwardingPipeline",
+          "detail": "Pending stores queue locally so execution continues; memory barriers drain store buffers before subsequent loads become globally visible.",
+          "cue_index": 2
+        },
+        {
+          "id": "dc-4",
+          "badge": "FALSE-SHR",
+          "label": "FalseSharingAcrossContiguousSixtyFourByteLines",
+          "detail": "Two cores updating separate integers inside one 64-byte line repeatedly invalidate each other, collapsing multicore throughput.",
+          "cue_index": 3
+        },
+        {
+          "id": "dc-5",
+          "badge": "PREFETCH",
+          "label": "HardwareStridePrefetchingAndBandwidthTradeoff",
+          "detail": "Stream detectors fetch upcoming cache lines ahead of demand reads, though excessive speculation can pollute L2/L3 capacity.",
+          "cue_index": 4
+        },
+        {
+          "id": "dc-6",
+          "badge": "NUMA",
+          "label": "NonUniformMemoryAccessInterconnectCoherenceProtocol",
+          "detail": "Cross-socket memory requests traverse UPI or Infinity Fabric links, doubling latency compared to local memory controller channels.",
+          "cue_index": 5
+        },
+        {
+          "id": "dc-7",
+          "badge": "TLB-SYNC",
+          "label": "TranslationLookasideBufferShootdownInvalidation",
+          "detail": "Unmapping virtual pages triggers inter-processor interrupts so peer cores flush stale virtual-to-physical address translations.",
+          "cue_index": 6
+        },
+        {
+          "id": "dc-8",
+          "badge": "ALIGN-64",
+          "label": "CacheLineAlignedThreadLocalPartitioning",
+          "detail": "Aligning per-worker accumulators on 64-byte boundaries isolates dirty writes and preserves near-linear multicore scalability.",
+          "cue_index": 7
+        }
+      ],
+      "footer_note": "Dense Concept Overflow Fixture"
+    },
+    {
+      "scene_id": "dense-process-01",
+      "base_scene_id": "dense-process-01",
+      "part_index": 1,
+      "part_total": 1,
+      "title": "End-to-End Virtual-to-Physical Cache Miss & Replacement Flow",
+      "subtitle": "Eight-stage hardware lookup, translation, miss fill, and write-back pipeline",
+      "template": "process_diagram",
+      "note_point_ids": ["np-04", "np-06"],
+      "source_refs": ["seg-04", "seg-06", "slide:2"],
+      "narration_sentences": [
+        "First, the load unit issues a virtual address and queries the L1 data TLB alongside set index extraction.",
+        "Second, physical tag comparison checks all ways inside the indexed cache set in parallel.",
+        "Third, if no valid way matches, the miss status holding register allocates an outstanding fill entry.",
+        "Fourth, the L2 controller probes its larger inclusive or non-inclusive directory for the physical cache line.",
+        "Fifth, on an L2 and L3 miss, the memory controller issues a DRAM row-buffer activate and column read command.",
+        "Sixth, the replacement policy selects an LRU or pseudo-LRU victim way in L1 to make room for the incoming line.",
+        "Seventh, if the evicted victim line carries a set dirty bit, its contents enqueue into a write-back buffer to lower memory.",
+        "Eighth, the newly arrived 64-byte line fills the L1 way, marks valid, and wakes the stalled load instruction."
+      ],
+      "items": [
+        {
+          "id": "dp-1",
+          "badge": "Step 1",
+          "label": "VirtualAddressAndTLBLookup",
+          "detail": "Compute virtual page number and set index in parallel using VIPT geometry.",
+          "cue_index": 0
+        },
+        {
+          "id": "dp-2",
+          "badge": "Step 2",
+          "label": "AssociativeTagComparison",
+          "detail": "Compare physical tag bits against all 8 ways in the indexed L1 cache set.",
+          "cue_index": 1
+        },
+        {
+          "id": "dp-3",
+          "badge": "Step 3",
+          "label": "MissStatusHoldingAllocation",
+          "detail": "Record L1 miss in MSHR table so non-blocking loads merge into one fill request.",
+          "cue_index": 2
+        },
+        {
+          "id": "dp-4",
+          "badge": "Step 4",
+          "label": "CoherenceDirectoryProbeL2L3",
+          "detail": "Check L2, shared L3, and snoop filters for clean or Modified peer ownership.",
+          "cue_index": 3
+        },
+        {
+          "id": "dp-5",
+          "badge": "Step 5",
+          "label": "DramMemoryControllerRead",
+          "detail": "Schedule DRAM bank precharge, activate, and CAS read across memory channels.",
+          "cue_index": 4
+        },
+        {
+          "id": "dp-6",
+          "badge": "Step 6",
+          "label": "VictimWaySelectionPolicy",
+          "detail": "Pick least-recently-used replacement candidate way inside the target L1 set.",
+          "cue_index": 5
+        },
+        {
+          "id": "dp-7",
+          "badge": "Step 7",
+          "label": "DirtyBitWriteBackFlush",
+          "detail": "If victim dirty bit equals 1, push modified 64-byte line to write-back buffer.",
+          "cue_index": 6
+        },
+        {
+          "id": "dp-8",
+          "badge": "Step 8",
+          "label": "CacheLineFillAndWakeup",
+          "detail": "Install incoming line, update tag metadata, and forward requested word to core.",
+          "cue_index": 7
+        }
+      ],
+      "footer_note": "Dense Process Diagram Fixture"
+    },
+    {
+      "scene_id": "dense-timeline-01",
+      "base_scene_id": "dense-timeline-01",
+      "part_index": 1,
+      "part_total": 1,
+      "title": "Seven Decades of Memory Hierarchy & Cache Milestones",
+      "subtitle": "Dense timeline requiring horizontal split without overlapping cards",
+      "template": "timeline",
+      "note_point_ids": ["np-07"],
+      "source_refs": ["seg-07"],
+      "narration_sentences": [
+        "In 1968, IBM System/360 Model 85 introduced the first commercial high-speed cache memory.",
+        "In 1974, early minicomputers experimented with small off-chip bipolar SRAM instruction buffers.",
+        "In 1984, Motorola 68020 integrated a 256-byte on-chip instruction cache directly on silicon.",
+        "In 1989, Intel 80486 unified an 8-kilobyte on-die L1 cache alongside pipelined integer execution.",
+        "In 1995, Pentium Pro placed dedicated backside L2 SRAM inside the processor package.",
+        "In 2001, server processors standardized multi-megabyte shared on-die L2 and L3 cache hierarchies.",
+        "In 2006, mainstream dual and quad-core CPUs relied on MESI coherence protocols across shared L3.",
+        "In 2022, 3D vertical cache stacking expanded L3 capacity past ninety-six megabytes per compute die."
+      ],
+      "items": [
+        {
+          "id": "dt-1",
+          "badge": "1968",
+          "label": "IBM System/360 Model 85",
+          "detail": "First commercial high-speed buffer cache hiding slower magnetic core memory latency.",
+          "cue_index": 0
+        },
+        {
+          "id": "dt-2",
+          "badge": "1974",
+          "label": "BipolarSRAMInstructionBuffers",
+          "detail": "Off-chip SRAM banks trimmed instruction fetch stalls on high-frequency minicomputers.",
+          "cue_index": 1
+        },
+        {
+          "id": "dt-3",
+          "badge": "1984",
+          "label": "On-Die Instruction Cache",
+          "detail": "Motorola 68020 placed a 256-byte instruction cache inside the microprocessor die.",
+          "cue_index": 2
+        },
+        {
+          "id": "dt-4",
+          "badge": "1989",
+          "label": "Unified On-Chip L1 Cache",
+          "detail": "Intel 80486 integrated an 8 KB unified L1 cache directly with the CPU pipeline.",
+          "cue_index": 3
+        },
+        {
+          "id": "dt-5",
+          "badge": "1995",
+          "label": "Dedicated Backside L2 Bus",
+          "detail": "Pentium Pro coupled full-speed L2 SRAM in a dual-cavity MCM package.",
+          "cue_index": 4
+        },
+        {
+          "id": "dt-6",
+          "badge": "2001",
+          "label": "Multi-Megabyte Shared Tiers",
+          "detail": "Enterprise processors moved large associative L2 and L3 banks onto the main die.",
+          "cue_index": 5
+        },
+        {
+          "id": "dt-7",
+          "badge": "2006",
+          "label": "MulticoreCoherenceProtocols",
+          "detail": "Shared L3 slices and MESI/MOESI snooping kept multi-core caches consistent.",
+          "cue_index": 6
+        },
+        {
+          "id": "dt-8",
+          "badge": "2022+",
+          "label": "3DV-CacheStackedMemory",
+          "detail": "Through-silicon vias bond extra SRAM tiles directly atop L3 for massive capacity.",
+          "cue_index": 7
+        }
+      ],
+      "footer_note": "Dense Timeline Overflow Fixture"
+    }
+  ]
+}

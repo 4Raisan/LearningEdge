@@ -1,0 +1,45 @@
+[package]
+name = "learningedge"
+version = "0.1.0"
+edition = "2021"
+default-run = "learningedge"
+description = "Local-first lecture-to-notes and verified motion-graphics explainer workflow"
+
+[lib]
+name = "learningedge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "learningedge"
+path = "src/main.rs"
+
+[[bin]]
+name = "pipeline_cli"
+path = "src/bin/pipeline_cli.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+apalis = { version = "1.2", features = ["retry", "tracing"] }
+apalis-sqlite = "1.2"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+keyring = "4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate", "json"] }
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-shell = "2"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
