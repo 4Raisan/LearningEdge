@@ -1,0 +1,79 @@
+{
+  "lecture_id": "lec-cpu-caching-01",
+  "title": "CPU Caching and Memory Hierarchy",
+  "course": "Computer Architecture Foundations",
+  "segments": [
+    {
+      "id": "seg-01",
+      "start_ms": 0,
+      "end_ms": 24000,
+      "speaker": "Lecturer",
+      "topic_id": "np-01",
+      "topic_title": "The Memory Wall",
+      "text": "Modern processors execute instructions in fractions of a nanosecond, while fetching a word from main DRAM memory takes roughly two hundred CPU cycles. This growing gap between processor speed and memory latency is called the memory wall, because fast cores stall idle whenever data must travel across the off-chip memory bus."
+    },
+    {
+      "id": "seg-02",
+      "start_ms": 24000,
+      "end_ms": 48000,
+      "speaker": "Lecturer",
+      "topic_id": "np-02",
+      "topic_title": "Temporal Locality",
+      "text": "Caches bridge this gap by exploiting temporal locality, which means a program is likely to access the same memory address again soon after using it. For example, a loop counter or running sum variable is read and updated on every iteration, so keeping that hot value in fast on-chip SRAM avoids repeated slow trips to DRAM."
+    },
+    {
+      "id": "seg-03",
+      "start_ms": 48000,
+      "end_ms": 74000,
+      "speaker": "Lecturer",
+      "topic_id": "np-03",
+      "topic_title": "Spatial Locality and Cache Lines",
+      "text": "Spatial locality means accessing one memory address makes nearby addresses likely to be needed next, so caches transfer whole sixty-four-byte cache lines instead of single bytes. When scanning a contiguous array sequentially, one cache miss brings in sixteen four-byte integers at once, although strided pointer jumping bypasses this advantage because adjacent fetched bytes go unused."
+    },
+    {
+      "id": "seg-04",
+      "start_ms": 74000,
+      "end_ms": 102000,
+      "speaker": "Lecturer",
+      "topic_id": "np-04",
+      "topic_title": "Cache Lookup Process",
+      "text": "Every memory request splits the address into tag, set index, and block offset bits so the cache controller can locate the target set and compare tags. If a valid tag matches, a cache hit returns the word immediately; if no tag matches, a cache miss fetches the line from lower memory and evicts a victim line using a replacement policy like least recently used."
+    },
+    {
+      "id": "seg-05",
+      "start_ms": 102000,
+      "end_ms": 128000,
+      "speaker": "Lecturer",
+      "topic_id": "np-05",
+      "topic_title": "Multi-Level Cache Hierarchy",
+      "text": "Because fast SRAM is expensive and large circuits add wire delay, CPUs organize caches as a multi-level hierarchy trading latency against capacity. Level one stays tiny around thirty-two kilobytes per core at roughly four cycles, level two expands to hundreds of kilobytes around twelve cycles, and shared level three reaches tens of megabytes around forty cycles before DRAM."
+    },
+    {
+      "id": "seg-06",
+      "start_ms": 128000,
+      "end_ms": 158000,
+      "speaker": "Lecturer",
+      "topic_id": "np-06",
+      "topic_title": "Write-Through vs Write-Back Policies",
+      "text": "On a store instruction, write policies decide when modified data reaches lower memory levels. Write-through updates both the cache and lower memory immediately for simpler coherence at the cost of higher memory bus traffic, whereas write-back writes only to the cache and marks a dirty bit so main memory is updated only when that dirty line is later evicted."
+    },
+    {
+      "id": "seg-07",
+      "start_ms": 158000,
+      "end_ms": 182000,
+      "speaker": "Lecturer",
+      "topic_id": "np-07",
+      "topic_title": "Evolution of CPU Caches",
+      "text": "Cache design evolved over five decades as transistor budgets grew. In nineteen sixty-eight the IBM System three-sixty Model eighty-five pioneered commercial cache memory, nineteen eighties chips integrated small level-one caches on the processor die, nineteen nineties architectures added multi-level level-two and level-three tiers, and two-thousands multicore CPUs introduced hardware cache coherence protocols like MESI."
+    },
+    {
+      "id": "seg-08",
+      "start_ms": 182000,
+      "end_ms": 195000,
+      "speaker": "Lecturer",
+      "topic_id": "np-08",
+      "topic_title": "Practical Data Layout Takeaway",
+      "text": "In practice, software runs dramatically faster when hot working sets fit inside level-one or level-two cache and data structures pack fields contiguously in memory rather than scattering nodes across heap pointers."
+    }
+  ]
+}
