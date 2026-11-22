@@ -13,7 +13,9 @@ Users can choose their models, thinking settings, note depth, and video preferen
 
 - **Desktop and storage.** Tauri 2 uses the system WebView. Rust runs the pipeline, Svelte and TypeScript handle the UI, and SQLite stores jobs and the personal knowledge graph in one local database.
 - **Local AI.** Ollama provides model management and structured output. Native whisper.cpp handles transcription on CPU, with Vulkan as a benchmark candidate. Download model weights separately to keep the installer smaller.
-- **Video.** Canvas 2D shares scene templates between preview and export. FFmpeg encodes each scene so a retry can reuse completed footage. Installed Windows speech voices give the first version an offline narration option.
+- **Video.** Konva provides the Canvas 2D scene primitives for preview and export. FFmpeg encodes each scene so a retry can reuse completed footage. Installed Windows speech voices give the first version an offline narration option.
+
+Reuse Apalis with SQLite for durable jobs and retries, SQLx for database migrations, and Tauri sidecars to run native tools. LearningEdge owns the lecture workflow, coverage checks, and educational scene templates.
 
 Start with local processing and let users add separate OpenAI and Gemini API keys. Eligible ChatGPT Pro and Business users can use claimed API credits through their linked OpenAI API organization. Use a Gemini API key for Google models in LearningEdge.
 

@@ -15,6 +15,7 @@ Read the [README](README.md), [workflow](docs/workflow.md), [tech stack](docs/te
 - Validate output structure and required note IDs, then check whether the narration or visuals actually explain each point. Hold rendering when unresolved gaps remain.
 - Persist completed stages and scenes. Invalidate downstream work when its inputs or settings change. Keep export duration driven by content.
 - Keep local jobs offline. Send lecture content to a cloud provider only when the user explicitly configures cloud processing for that stage. Never put keys or private lecture content in fixtures or logs.
+- Build on the [selected frameworks and libraries](docs/tech-stack.md#frameworks-and-libraries-to-reuse). Use Apalis for job recovery, SQLx for migrations, Tauri sidecars for native tools, and Konva and FFmpeg for scene drawing and encoding. Keep project code focused on stage rules, coverage checks, and educational scene templates.
 
 ## Acceptance checks
 

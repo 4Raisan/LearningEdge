@@ -8,8 +8,15 @@ Start with a Windows-first, local-first desktop app. Run the pipeline in one loc
 | Storage and personal graph | [SQLite with FTS5](https://sqlite.org/fts5.html) and local files | Jobs, presets, concepts, edges, and source references fit in one embedded database. FTS5 provides keyword search for lecture passages. Indexed edges support graph traversal for dreaming. Keep large media on disk. |
 | Local language models | [Ollama](https://docs.ollama.com/api/chat) on loopback | Ollama handles model management, structured output, and supported thinking settings through one API. Keep it optional for API-only installs. Use a small quantized model and keep it loaded briefly across adjacent text stages when memory permits. |
 | Local transcription | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and FFmpeg | A native engine gives the Windows build a CPU path without a Python environment. Use timestamps, voice activity detection, and a quantized multilingual model. Benchmark Vulkan on the actual GPU before enabling it by default. |
-| Motion graphics | Canvas 2D and [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html) | Typed scene templates support text, diagrams, and timelines while sharing the renderer between preview and export. Encoding per scene limits the work repeated after a change or failure. |
+| Motion graphics | [Konva](https://konvajs.org/docs/overview.html) and [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html) | Konva supplies Canvas shapes, text, layers, and transforms inside the existing WebView. Use the same scene templates for preview and export and render from explicit frame timestamps. FFmpeg handles scene encoding and assembly. |
 | Local narration | Installed Windows speech voices | The first offline version can start with voices already available on the machine. Test intelligibility and pronunciation in the target languages before adding a neural voice dependency. |
+
+## Frameworks and libraries to reuse
+
+- **Durable jobs.** Use [Apalis with SQLite](https://docs.rs/apalis-sqlite/latest/apalis_sqlite/) for job persistence, retries, and recovery. Keep one worker initially. LearningEdge still owns stage checkpoints, cache invalidation, and safe retries after a partial output.
+- **Database access.** Use [SQLx](https://docs.rs/sqlx/latest/sqlx/macro.migrate.html) for SQLite access and migrations. LearningEdge defines the note, coverage, and graph schemas.
+- **Native processes.** Use [Tauri sidecars](https://v2.tauri.app/develop/sidecar/) for packaged FFmpeg and whisper.cpp executables. Reuse the engines for media processing and transcription. Fetch model weights separately.
+- **Video framework tradeoff.** Start with Konva and FFmpeg because preview can use the existing WebView. Consider [Remotion](https://www.remotion.dev/docs/renderer/render-media) if the prototype shows that frame export or timeline tooling takes too much custom work. Compare its Node and browser runtime footprint and check [licensing terms](https://www.remotion.dev/pricing) before adopting it.
 
 ## Optimization choices
 
