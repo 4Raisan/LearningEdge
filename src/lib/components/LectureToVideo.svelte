@@ -1,23 +1,29 @@
 <script lang="ts">
-  interface LectureHistoryItem {
+  interface LectureItem {
     id: string;
     title: string;
     content: string;
     submittedAt: string;
     charCount: number;
     wordCount: number;
+    pinned: boolean;
   }
 
-  // Lecture history - starts empty per strict constraint (no mock data/sample items)
-  let history = $state<LectureHistoryItem[]>([]);
+  // Recents list - starts empty per strict constraint (no mock data/sample items)
+  let history = $state<LectureItem[]>([]);
   let selectedHistoryId = $state<string | null>(null);
 
   // Input state
   let lectureText = $state("");
 
-  // Video generation portal interaction state
+  // Video generation portal state
   let isGenerating = $state(false);
+  let hasGenerated = $state(false);
   let activeGenerationId = $state<string | null>(null);
+
+  // Rename editing state
+  let editingId = $state<string | null>(null);
+  let editTitleText = $state("");
 
   // Derived metrics (strictly calculated from real user input, not fabricated)
   let charCount = $derived(lectureText.length);
@@ -25,12 +31,19 @@
     lectureText.trim() ? lectureText.trim().split(/\s+/).filter(Boolean).length : 0
   );
 
+  // Group pinned chats at the top of Recents, followed by unpinned chats
+  let sortedHistory = $derived([
+    ...history.filter((item) => item.pinned),
+    ...history.filter((item) => !item.pinned),
+  ]);
+
   function handleSubmit() {
     const trimmed = lectureText.trim();
     if (!trimmed) return;
 
     // Trigger visual generation animation in the right-side portal
     isGenerating = true;
+    hasGenerated = true;
 
     // Generate unique ID
     const newId = "lec_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
@@ -40,16 +53,17 @@
     const firstLine = trimmed.split("\n")[0].trim();
     const title = firstLine.length > 50 ? firstLine.slice(0, 47) + "..." : firstLine || "Untitled Lecture";
 
-    const newItem: LectureHistoryItem = {
+    const newItem: LectureItem = {
       id: newId,
       title,
       content: trimmed,
       submittedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       charCount: trimmed.length,
       wordCount: trimmed.split(/\s+/).filter(Boolean).length,
+      pinned: false,
     };
 
-    // Add to history (newest first)
+    // Add to recents (newest first)
     history = [newItem, ...history];
     selectedHistoryId = newId;
   }
@@ -62,7 +76,8 @@
     }
   }
 
-  function selectHistory(item: LectureHistoryItem) {
+  function selectHistory(item: LectureItem) {
+    if (editingId === item.id) return;
     selectedHistoryId = item.id;
     lectureText = item.content;
   }
@@ -72,30 +87,92 @@
     lectureText = "";
     isGenerating = false;
     activeGenerationId = null;
+    cancelRename();
   }
 
   function clearHistory() {
     history = [];
     selectedHistoryId = null;
+    cancelRename();
   }
 
   function stopGenerating() {
     isGenerating = false;
-    activeGenerationId = null;
+  }
+
+  // --- Recents Item Actions: Rename, Pin, Delete ---
+
+  function focusInput(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
+  function startRename(item: LectureItem, event?: MouseEvent | KeyboardEvent) {
+    event?.stopPropagation();
+    editingId = item.id;
+    editTitleText = item.title;
+  }
+
+  function saveRename(id: string, event?: Event) {
+    event?.stopPropagation();
+    const trimmed = editTitleText.trim();
+    if (trimmed) {
+      history = history.map((item) =>
+        item.id === id ? { ...item, title: trimmed } : item
+      );
+    }
+    editingId = null;
+    editTitleText = "";
+  }
+
+  function cancelRename(event?: Event) {
+    event?.stopPropagation();
+    editingId = null;
+    editTitleText = "";
+  }
+
+  function handleRenameKeydown(event: KeyboardEvent, id: string) {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      saveRename(id, event);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename(event);
+    }
+  }
+
+  function togglePin(id: string, event?: MouseEvent) {
+    event?.stopPropagation();
+    history = history.map((item) =>
+      item.id === id ? { ...item, pinned: !item.pinned } : item
+    );
+  }
+
+  function deleteChat(id: string, event?: MouseEvent) {
+    event?.stopPropagation();
+    history = history.filter((item) => item.id !== id);
+    if (selectedHistoryId === id) {
+      selectedHistoryId = null;
+    }
+    if (editingId === id) {
+      cancelRename();
+    }
   }
 </script>
 
 <div class="lecture-screen">
-  <!-- 1. LEFT SIDEBAR: Lecture History -->
-  <aside class="sidebar" aria-label="Lecture History">
+  <!-- 1. LEFT SIDEBAR: Recents -->
+  <aside class="sidebar" aria-label="Recents">
     <div class="sidebar-header">
       <div class="title-with-count">
-        <h2>Lecture History</h2>
+        <h2>Recents</h2>
         <span class="count-pill">{history.length}</span>
       </div>
       <button
         class="icon-btn"
         title="Start fresh lecture input"
+        aria-label="Start fresh lecture input"
         onclick={startNewLecture}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -108,7 +185,7 @@
 
     <div class="history-content">
       {#if history.length === 0}
-        <!-- Sensible empty state for history (no fake items) -->
+        <!-- Sensible empty state for Recents (no fake items) -->
         <div class="empty-state">
           <div class="empty-icon-wrap">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -116,29 +193,116 @@
               <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
           </div>
-          <p class="empty-title">No Lecture History</p>
+          <p class="empty-title">No Recents</p>
           <p class="empty-desc">Lectures submitted during this session will appear here.</p>
         </div>
       {:else}
         <div class="history-list">
-          {#each history as item (item.id)}
-            <button
+          {#each sortedHistory as item (item.id)}
+            <div
               class="history-card"
               class:selected={selectedHistoryId === item.id}
+              class:pinned={item.pinned}
+              role="button"
+              tabindex="0"
               onclick={() => selectHistory(item)}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectHistory(item); }}
             >
-              <div class="card-meta">
-                <span class="card-time">{item.submittedAt}</span>
-                <span class="card-words">{item.wordCount} words</span>
+              <div class="card-top-row">
+                <div class="card-meta">
+                  {#if item.pinned}
+                    <span class="pinned-badge" title="Pinned to top">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
+                      </svg>
+                      PINNED
+                    </span>
+                  {/if}
+                  <span class="card-time">{item.submittedAt}</span>
+                  <span class="card-words">{item.wordCount} words</span>
+                </div>
+
+                <!-- Accessible action buttons: Pin/Unpin, Rename, Delete -->
+                <div class="card-actions" role="toolbar" aria-label="Chat actions">
+                  <button
+                    class="card-action-btn"
+                    class:is-pinned={item.pinned}
+                    onclick={(e) => togglePin(item.id, e)}
+                    title={item.pinned ? "Unpin chat" : "Pin chat to top"}
+                    aria-label={item.pinned ? "Unpin chat" : "Pin chat to top"}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill={item.pinned ? "currentColor" : "none"} stroke="currentColor" stroke-width="2">
+                      <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
+                    </svg>
+                  </button>
+
+                  <button
+                    class="card-action-btn"
+                    onclick={(e) => startRename(item, e)}
+                    title="Rename chat"
+                    aria-label="Rename chat"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                    </svg>
+                  </button>
+
+                  <button
+                    class="card-action-btn delete-btn"
+                    onclick={(e) => deleteChat(item.id, e)}
+                    title="Delete chat"
+                    aria-label="Delete chat"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <div class="card-title">{item.title}</div>
+
+              {#if editingId === item.id}
+                <!-- Inline Rename Editing Field -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div class="rename-inline-box" onclick={(e) => e.stopPropagation()} role="presentation">
+                  <input
+                    class="rename-input"
+                    type="text"
+                    bind:value={editTitleText}
+                    onkeydown={(e) => handleRenameKeydown(e, item.id)}
+                    aria-label="Edit chat title"
+                    use:focusInput
+                  />
+                  <div class="rename-actions">
+                    <button
+                      class="rename-btn save"
+                      onclick={(e) => saveRename(item.id, e)}
+                      title="Save title (Enter)"
+                      aria-label="Save title"
+                    >
+                      Save
+                    </button>
+                    <button
+                      class="rename-btn cancel"
+                      onclick={cancelRename}
+                      title="Cancel editing (Escape)"
+                      aria-label="Cancel editing"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              {:else}
+                <div class="card-title" title={item.title}>{item.title}</div>
+              {/if}
+
               <div class="card-snippet">{item.content}</div>
-            </button>
+            </div>
           {/each}
         </div>
         <div class="history-footer">
           <button class="clear-btn" onclick={clearHistory}>
-            Clear History
+            Clear Recents
           </button>
         </div>
       {/if}
@@ -153,7 +317,7 @@
         <p class="area-subtitle">Type or paste lecture text, transcript, or study material</p>
       </div>
       {#if selectedHistoryId}
-        <span class="loaded-badge">History Item Loaded</span>
+        <span class="loaded-badge">Recents Item Loaded</span>
       {/if}
     </div>
 
@@ -199,7 +363,7 @@
     </div>
   </section>
 
-  <!-- 3. RIGHT-SIDE: Video-Generation Portal & Estimated Time -->
+  <!-- 3. RIGHT-SIDE: Video-Generation Portal, Content Coverage, and Estimated Time -->
   <section class="portal-area" aria-label="Video Generation Portal">
     <div class="area-header">
       <div>
@@ -276,6 +440,22 @@
       {/if}
     </div>
 
+    <!-- Below the portal: Content Coverage (shown after video generation) -->
+    {#if hasGenerated}
+      <div class="coverage-card">
+        <div class="coverage-top-row">
+          <span class="coverage-label">Lecture Content Coverage</span>
+          <span class="coverage-badge">AWAITING ENGINE</span>
+        </div>
+        <div class="coverage-value-display">
+          “Coverage: --% / 100%”
+        </div>
+        <p class="coverage-paragraph">
+          This explainer video covers --% of the submitted lecture content. Once the coverage verification engine is active, the included material will be calculated and reported out of 100%.
+        </p>
+      </div>
+    {/if}
+
     <!-- Below the portal: Estimated-time area -->
     <div class="estimated-time-card">
       <div class="est-top-row">
@@ -331,7 +511,7 @@
     color: #888888;
   }
 
-  /* ---------------- 1. Left Sidebar (History) ---------------- */
+  /* ---------------- 1. Left Sidebar (Recents) ---------------- */
   .sidebar {
     display: flex;
     flex-direction: column;
@@ -398,7 +578,7 @@
     padding: 12px;
   }
 
-  /* History Empty State */
+  /* Recents Empty State */
   .empty-state {
     flex: 1;
     display: flex;
@@ -437,7 +617,7 @@
     max-width: 200px;
   }
 
-  /* History List */
+  /* Recents List */
   .history-list {
     display: flex;
     flex-direction: column;
@@ -452,7 +632,9 @@
     border-radius: 8px;
     padding: 10px 12px;
     color: inherit;
+    cursor: pointer;
     transition: all 0.15s ease;
+    user-select: none;
   }
 
   .history-card:hover {
@@ -465,12 +647,135 @@
     border-color: #ffffff;
   }
 
-  .card-meta {
+  /* Visual distinction for pinned chats */
+  .history-card.pinned {
+    border-left: 3px solid #ffffff;
+    background: #141414;
+  }
+
+  .history-card.pinned:hover {
+    background: #1c1c1c;
+  }
+
+  .card-top-row {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 11px;
     color: #777777;
-    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+
+  .pinned-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #222222;
+    color: #ffffff;
+    border: 1px solid #444444;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .card-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #777777;
+    padding: 0;
+    transition: all 0.15s;
+  }
+
+  .card-action-btn:hover {
+    background: #242424;
+    border-color: #3a3a3a;
+    color: #ffffff;
+  }
+
+  .card-action-btn.is-pinned {
+    color: #ffffff;
+  }
+
+  .card-action-btn.delete-btn:hover {
+    color: #fb7185;
+    border-color: rgba(251, 113, 133, 0.4);
+    background: rgba(251, 113, 133, 0.1);
+  }
+
+  /* Inline Rename Editing Box */
+  .rename-inline-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 4px 0 6px;
+  }
+
+  .rename-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #ffffff;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+  }
+
+  .rename-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .rename-btn {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .rename-btn.save {
+    background: #ffffff;
+    color: #000000;
+    border: 1px solid #ffffff;
+  }
+
+  .rename-btn.save:hover {
+    background: #dddddd;
+  }
+
+  .rename-btn.cancel {
+    background: #1f1f1f;
+    color: #888888;
+    border: 1px solid #333333;
+  }
+
+  .rename-btn.cancel:hover {
+    color: #ffffff;
+    border-color: #555555;
   }
 
   .card-title {
@@ -952,6 +1257,65 @@
     border-color: #666666;
   }
 
+  /* ---------------- Content Coverage Section ---------------- */
+  .coverage-card {
+    background: #090909;
+    border: 1px solid #222222;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .coverage-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .coverage-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888888;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .coverage-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #888888;
+    background: #141414;
+    border: 1px solid #262626;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  .coverage-value-display {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    padding: 8px 10px;
+    background: #111111;
+    border: 1px dashed #333333;
+    border-radius: 6px;
+  }
+
+  .coverage-paragraph {
+    margin: 0;
+    font-size: 12px;
+    color: #a0a0a0;
+    line-height: 1.5;
+  }
+
   /* ---------------- Estimated-Time Area ---------------- */
   .estimated-time-card {
     background: #090909;
@@ -1019,7 +1383,7 @@
       min-height: auto;
     }
     .sidebar {
-      max-height: 280px;
+      max-height: 360px;
     }
     .portal-frame {
       min-height: 220px;
