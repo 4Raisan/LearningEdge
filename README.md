@@ -25,4 +25,4 @@ Start with local processing and let users add separate OpenAI and Gemini API key
 
 ## Start implementing
 
-The repository currently contains product and architecture documentation. Coding agents should start with [AGENTS.md](AGENTS.md) for the build order and acceptance checks. The first milestone is a local transcript-to-video run using a small fixture, followed by local audio transcription, provider controls, and knowledge graph features.
+The repository currently contains product and architecture documentation. Coding agents should start with [AGENTS.md](AGENTS.md) for the build order and acceptance checks. The first milestone is a local transcript-to-video run that checks explanation coverage, narration timing, and readable scenes. Local audio transcription, provider controls, and knowledge graph features follow.

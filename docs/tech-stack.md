@@ -9,7 +9,7 @@ Start with a Windows-first, local-first desktop app. Run the pipeline in one loc
 | Local language models | [Ollama](https://docs.ollama.com/api/chat) on loopback | Ollama handles model management, structured output, and supported thinking settings through one API. Keep it optional for API-only installs. Use a small quantized model and keep it loaded briefly across adjacent text stages when memory permits. |
 | Local transcription | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and FFmpeg | A native engine gives the Windows build a CPU path without a Python environment. Use timestamps, voice activity detection, and a quantized multilingual model. Benchmark Vulkan on the actual GPU before enabling it by default. |
 | Motion graphics | [Konva](https://konvajs.org/docs/overview.html) and [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html) | Konva supplies Canvas shapes, text, layers, and transforms inside the existing WebView. Use the same scene templates for preview and export and render from explicit frame timestamps. FFmpeg handles scene encoding and assembly. |
-| Local narration | Installed Windows speech voices | The first offline version can start with voices already available on the machine. Test intelligibility and pronunciation in the target languages before adding a neural voice dependency. |
+| Local narration | Installed Windows speech voices behind a replaceable provider interface | The first offline version can use installed voices. Generate audio per scene and pass the measured duration to the renderer so future voice providers can reuse the same timing path. Test intelligibility and pronunciation before adding a neural voice dependency. |
 
 ## Frameworks and libraries to reuse
 

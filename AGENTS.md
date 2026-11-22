@@ -20,5 +20,7 @@ Read the [README](README.md), [workflow](docs/workflow.md), [tech stack](docs/te
 ## Acceptance checks
 
 - For the first milestone, run the transcript fixture end to end and check the playable export, captions, and source-to-video references.
-- Remove one required point from a scene plan and confirm the coverage check holds rendering. Retry after correcting the scene and check that completed work is reused.
+- Test three versions of the same scene plan. A complete explanation passes. A missing required point and a point mentioned without explanation both hold rendering. Correct the failed scene and check that completed work is reused.
+- Generate narration first. Verify that measured scene audio duration determines frame count and that the exported video retains the full narration. Use sentence cues when a reveal needs to match a phrase.
+- Test concept reveals, process diagrams, and timelines with long terms and dense content. Split overflowing content across scenes and check that the exported text stays readable.
 - When adding a provider or local engine, verify failure and retry behavior and record runtime and peak memory on the target Windows machine before changing a default.

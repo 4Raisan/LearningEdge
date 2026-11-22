@@ -14,4 +14,6 @@ Turn the verified notes into a narration script and storyboard. For every requir
 
 ## Render and check the explainer
 
-Generate motion graphics, narration, and captions from the verified plan. Let the material determine the runtime, with no fixed time limit. Confirm that the required scenes are present in the finished video and resolve their references to video timestamps. A learner should be able to follow each required point from its source to its note and then to the video segment that explains it.
+Generate narration for each scene before rendering its motion graphics. Use the measured audio duration to determine the frame count and use sentence cues where a visual reveal needs to match a phrase. Generate captions and assemble the scenes. Split content across scenes when a template cannot display it at a readable size.
+
+Let the material determine the runtime, with no fixed time limit. Confirm that the required scenes are present in the finished video and resolve their references to video timestamps. A learner should be able to follow each required point from its source to its note and then to the video segment that explains it.
