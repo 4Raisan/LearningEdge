@@ -6,4 +6,5 @@ src-tauri/target/
 *.db-shm
 artifacts/
 .tmp-test/
+.tools/
 coverage/
