@@ -39,7 +39,7 @@ pub fn ensure_provider_allowed(
     if offline_only
         && matches!(
             cfg.provider,
-            StageProviderKind::OpenAi | StageProviderKind::Gemini
+            StageProviderKind::OpenAi | StageProviderKind::Gemini | StageProviderKind::CodexCli
         )
     {
         return Err(ProviderError::OfflinePolicyViolation(format!(

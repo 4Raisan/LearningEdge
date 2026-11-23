@@ -24,6 +24,7 @@
   let selectedHistoryId = $state<string | null>(null);
 
   // Input state
+  let { useCodex = $bindable(false) }: { useCodex?: boolean } = $props();
   let lectureText = $state("");
 
   // Video generation portal state
@@ -67,7 +68,7 @@
   async function trackVideo(id: string, content: string) {
     try {
       if (!isTauriRuntime()) throw new Error("Open LearningEdge desktop to generate a video.");
-      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content });
+      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content, useCodex });
       while (true) {
         const { run, video_manifest, coverage_report, verified_notes } = await invokeTauri<RunArtifactsBundle>("get_run_artifacts", { runId: run_id });
         updateItem(id, {
@@ -390,6 +391,7 @@
         </div>
 
         <div class="input-actions">
+          <label><input type="checkbox" bind:checked={useCodex} /> Use signed-in Codex for this lecture (cloud)</label>
           {#if lectureText.length > 0}
             <button
               class="action-btn-secondary"

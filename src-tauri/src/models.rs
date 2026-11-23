@@ -278,6 +278,7 @@ pub struct BenchmarkMetrics {
 pub enum StageProviderKind {
     LocalOffline,
     Ollama,
+    CodexCli,
     OpenAi,
     Gemini,
 }

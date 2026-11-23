@@ -33,8 +33,9 @@ pub struct EnqueueFixtureResponse {
 pub async fn run_lecture_text(
     state: State<'_, AppState>,
     lecture_text: String,
+    use_codex: Option<bool>,
 ) -> Result<EnqueueFixtureResponse, String> {
-    let run_id = enqueue_lecture_text(&state.pool, &state.data_dir, &lecture_text)
+    let run_id = enqueue_lecture_text(&state.pool, &state.data_dir, &lecture_text, use_codex.unwrap_or(false))
         .await
         .map_err(|e| e.to_string())?;
     Ok(EnqueueFixtureResponse { run_id, status: "queued".into() })
@@ -44,6 +45,7 @@ pub async fn enqueue_lecture_text(
     pool: &SqlitePool,
     data_dir: &std::path::Path,
     lecture_text: &str,
+    use_codex: bool,
 ) -> anyhow::Result<String> {
     let text = lecture_text.trim();
     anyhow::ensure!(!text.is_empty(), "Enter some lecture text first.");
@@ -77,6 +79,14 @@ pub async fn enqueue_lecture_text(
     let mut concept_stage = preset.notes_stage.clone();
     concept_stage.provider = StageProviderKind::Ollama;
     concept_stage.model = "qwen3:4b".into();
+    if use_codex {
+        preset.id = "lecture-codex-cli".into();
+        preset.name = "Codex subscription".into();
+        preset.offline_only = false;
+        concept_stage.provider = StageProviderKind::CodexCli;
+        concept_stage.model = "codex-default".into();
+        concept_stage.thinking = crate::models::ThinkingLevel::Low;
+    }
     preset.notes_stage = concept_stage.clone();
     preset.verify_stage = concept_stage.clone();
     preset.coverage_stage = concept_stage;

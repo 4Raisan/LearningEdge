@@ -1,7 +1,7 @@
 import type { SceneSpec, SentenceCue } from "./renderer/types";
 
 export interface ModelCapabilities {
-  provider: "local_offline" | "ollama" | "open_ai" | "gemini";
+  provider: "local_offline" | "ollama" | "codex_cli" | "open_ai" | "gemini";
   model: string;
   label: string;
   supports_thinking: boolean;
@@ -11,7 +11,7 @@ export interface ModelCapabilities {
 }
 
 export interface StageProviderConfig {
-  provider: "local_offline" | "ollama" | "open_ai" | "gemini";
+  provider: "local_offline" | "ollama" | "codex_cli" | "open_ai" | "gemini";
   model: string;
   thinking: "off" | "low" | "medium" | "high";
   credential_ref?: string | null;
