@@ -31,6 +31,11 @@ Start with local processing and let users add separate OpenAI and Gemini API key
 
 Pasted text uses Ollama running locally with the `qwen3:4b` model, Windows narration, and FFmpeg. Install [Ollama for Windows](https://docs.ollama.com/windows), start it, and run `ollama pull qwen3:4b` once. Runs use the downloaded model and need no API key.
 
+## Subscription-backed video authoring
+
+- In **Providers & Presets**, select **Use signed-in Codex**, then submit the lecture. The desktop worker runs Codex CLI with ChatGPT sign-in for concept extraction, outline review and scene coverage. These stages send the lecture to OpenAI. Install Codex CLI and run `codex login` first.
+- For **Antigravity Gemini 4 Hydrogen Low**, run `python scripts/hydrogen-video.py "lecture.txt"` directly in the project directory with Antigravity CLI signed in and the LearningEdge build dependencies installed. This sends the text to Google, checks the script against the source and passes it to the local renderer. The command prints the exported MP4 path. Google supports direct CLI scripting on consumer plans and excludes embedding that CLI in third-party apps. [Antigravity FAQ](https://antigravity.google/docs/faq)
+
 ## Repository layout
 
 | Folder | What to change there |

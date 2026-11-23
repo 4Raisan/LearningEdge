@@ -24,6 +24,7 @@
   let videoSrc = $state("");
   let statusNotice = $state("");
   let busy = $state(false);
+  let useCodex = $state(false);
   let usageMessage = $state("");
 
   async function openUsage(provider: "antigravity" | "codex") {
@@ -213,7 +214,7 @@
   {/if}
 
   <div hidden={activeTab !== "lecture"}>
-    <LectureToVideo />
+    <LectureToVideo bind:useCodex />
   </div>
 
   {#if activeTab === "pipeline"}
@@ -309,6 +310,15 @@
       {/if}
     </section>
   {:else if activeTab === "presets"}
+    <section class="card">
+      <h2>Video authoring model</h2>
+      <button onclick={() => { useCodex = true; activeTab = "lecture"; }}>Use signed-in Codex</button>
+      <details>
+        <summary>Use Antigravity Hydrogen Low</summary>
+        <p>From the LearningEdge folder, run this command with your lecture text file. Hydrogen writes and reviews the script through your signed-in CLI, then LearningEdge renders the video.</p>
+        <code>python scripts/hydrogen-video.py "lecture.txt"</code>
+      </details>
+    </section>
     <section class="card">
       <h2>Subscription usage</h2>
       <button disabled={!tauriMode} onclick={() => openUsage("antigravity")}>Antigravity usage</button>
