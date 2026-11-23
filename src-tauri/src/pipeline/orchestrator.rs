@@ -231,10 +231,9 @@ pub async fn execute_pipeline_run(
     });
 
     if !verified_notes.verification_passed {
-        let reason = format!(
-            "Note verification failed with {} flag(s).",
-            verified_notes.flags.len()
-        );
+        let reason = verified_notes.flags.first()
+            .map(|flag| format!("Notes need review. {}", flag.message))
+            .unwrap_or_else(|| "Notes need review before rendering.".into());
         db::update_run_status(
             pool,
             run_id,
