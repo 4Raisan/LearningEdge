@@ -8,7 +8,8 @@ use crate::db;
 use crate::kg;
 use crate::models::{
     DreamSuggestion, KnowledgeGraphSnapshot, ModelCapabilities, PipelineRunRecord, PresetConfig,
-    RunArtifactsBundle, ScenePlan, SourceSearchHit,
+    RunArtifactsBundle, ScenePlan, SourceSearchHit, StageProviderKind, TranscriptFixture,
+    TranscriptSegment,
 };
 use crate::pipeline::orchestrator::{create_pipeline_run, load_run_artifacts_bundle};
 use crate::providers::known_model_capabilities;
@@ -26,6 +27,70 @@ pub struct AppState {
 pub struct EnqueueFixtureResponse {
     pub run_id: String,
     pub status: String,
+}
+
+#[tauri::command]
+pub async fn run_lecture_text(
+    state: State<'_, AppState>,
+    lecture_text: String,
+) -> Result<EnqueueFixtureResponse, String> {
+    let run_id = enqueue_lecture_text(&state.pool, &state.data_dir, &lecture_text)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(EnqueueFixtureResponse { run_id, status: "queued".into() })
+}
+
+pub async fn enqueue_lecture_text(
+    pool: &SqlitePool,
+    data_dir: &std::path::Path,
+    lecture_text: &str,
+) -> anyhow::Result<String> {
+    let text = lecture_text.trim();
+    anyhow::ensure!(!text.is_empty(), "Enter some lecture text first.");
+    let lecture_id = format!("lecture-{}", uuid::Uuid::new_v4());
+    let output_dir = data_dir.join("runs").join(&lecture_id);
+    tokio::fs::create_dir_all(&output_dir).await?;
+    let mut offset = 0;
+    let segments = text.lines().map(str::trim).filter(|line| !line.is_empty())
+        .enumerate().map(|(index, line)| {
+            let start_ms = offset;
+            offset += line.split_whitespace().count() as u64 * 400;
+            TranscriptSegment {
+                id: format!("{lecture_id}-text-{}", index + 1),
+                start_ms,
+                end_ms: offset,
+                speaker: None,
+                topic_id: None,
+                topic_title: None,
+                text: line.into(),
+            }
+        }).collect();
+    let transcript = TranscriptFixture {
+        lecture_id: lecture_id.clone(),
+        title: text.chars().take_while(|ch| *ch != '\n').take(80).collect(),
+        course: None,
+        segments,
+    };
+    let source = output_dir.join("lecture-text.json");
+    tokio::fs::write(&source, serde_json::to_vec(&transcript)?).await?;
+    let mut preset = PresetConfig::default();
+    let mut concept_stage = preset.notes_stage.clone();
+    concept_stage.provider = StageProviderKind::Ollama;
+    concept_stage.model = "qwen3:4b".into();
+    preset.notes_stage = concept_stage.clone();
+    preset.verify_stage = concept_stage.clone();
+    preset.coverage_stage = concept_stage;
+    let run_id = create_pipeline_run(pool, &lecture_id, &preset, &output_dir, None).await?;
+    let job = PipelineJob {
+        run_id: run_id.clone(),
+        transcript_path: source.to_string_lossy().into_owned(),
+        slides_path: None,
+    };
+    if let Err(error) = enqueue_pipeline_job(pool, job).await {
+        let _ = db::update_run_status(pool, &run_id, "failed", None, None, Some(&error.to_string()), None).await;
+        return Err(error);
+    }
+    Ok(run_id)
 }
 
 #[tauri::command]
@@ -86,6 +151,11 @@ pub async fn retry_run_with_scene_plan(
     run_id: String,
     scene_plan: ScenePlan,
 ) -> Result<EnqueueFixtureResponse, String> {
+    let run = db::get_pipeline_run(&state.pool, &run_id).await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Pipeline run not found".to_string())?;
+    let text_path = PathBuf::from(&run.output_dir).join("lecture-text.json");
+    let is_text_run = text_path.is_file();
     let json = serde_json::to_string(&scene_plan).map_err(|e| e.to_string())?;
     db::set_run_scene_plan_override(&state.pool, &run_id, Some(&json), "queued")
         .await
@@ -106,8 +176,8 @@ pub async fn retry_run_with_scene_plan(
         &state.pool,
         PipelineJob {
             run_id: run_id.clone(),
-            transcript_path: transcript_path.to_string_lossy().to_string(),
-            slides_path: Some(slides_path.to_string_lossy().to_string()),
+            transcript_path: if is_text_run { text_path } else { transcript_path }.to_string_lossy().into_owned(),
+            slides_path: (!is_text_run).then(|| slides_path.to_string_lossy().into_owned()),
         },
     )
     .await
@@ -227,3 +297,33 @@ pub async fn review_dream_suggestion(
         .await
         .map_err(|e| e.to_string())
 }
+#[tauri::command]
+pub fn open_provider_usage(provider: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::{env, os::windows::process::CommandExt, path::PathBuf, process::Command};
+        let mut command = match provider {
+            "antigravity" => {
+                let exe = env::var_os("LOCALAPPDATA").map(PathBuf::from)
+                    .map(|dir| dir.join("agy/bin/agy.exe"))
+                    .filter(|file| file.is_file())
+                    .or_else(|| env::split_paths(&env::var_os("PATH")?)
+                        .map(|dir| dir.join("agy.exe")).find(|file| file.is_absolute() && file.is_file()))
+                    .ok_or("Install Antigravity CLI to view its usage.")?;
+                let mut cmd = Command::new(exe);
+                cmd.creation_flags(0x00000010); // CREATE_NEW_CONSOLE for the interactive CLI
+                cmd
+            }
+            "codex" => {
+                let mut cmd = Command::new(PathBuf::from(env::var_os("SystemRoot").ok_or("Missing Windows directory")?).join("explorer.exe"));
+                cmd.arg("https://chatgpt.com/codex/settings/usage");
+                cmd
+            }
+            _ => return Err("Unknown usage provider".into()),
+        };
+        command.spawn().map(|_| ()).map_err(|e| format!("Could not open {provider} usage: {e}"))
+    }
+    #[cfg(not(windows))]
+    Err(format!("Opening {provider} usage requires the Windows desktop app."))
+}
+

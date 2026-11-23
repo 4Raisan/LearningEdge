@@ -46,7 +46,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::open_provider_usage,
             commands::run_fixture_pipeline,
+            commands::run_lecture_text,
             commands::retry_run_with_scene_plan,
             commands::get_run_artifacts,
             commands::list_runs,
