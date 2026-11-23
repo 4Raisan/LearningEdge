@@ -23,6 +23,22 @@ Start with local processing and let users add separate OpenAI and Gemini API key
 - [Lecture-to-video workflow](docs/workflow.md)
 - [User controls and knowledge graph](docs/user-controls.md)
 
-## Start implementing
+## Run Lecture to Video
 
-The repository currently contains product and architecture documentation. Coding agents should start with [AGENTS.md](AGENTS.md) for the build order and acceptance checks. The first milestone is a local transcript-to-video run that checks explanation coverage, narration timing, and readable scenes. Local audio transcription, provider controls, and knowledge graph features follow.
+1. Open LearningEdge and select **Lecture to Video**.
+2. Paste your lecture text and select **Generate video**. The app groups related ideas, extracts the concepts and theories, and writes an explainer in its own words.
+3. Watch the run status. When verification and rendering finish, play the MP4 in the Video Portal.
+
+Pasted text uses Ollama running locally with the `qwen3:4b` model, Windows narration, and FFmpeg. Install [Ollama for Windows](https://docs.ollama.com/windows), start it, and run `ollama pull qwen3:4b` once. Runs use the downloaded model and need no API key.
+
+## Repository layout
+
+| Folder | What to change there |
+| --- | --- |
+| [frontend/pages](frontend/pages) | App screens, starting with Lecture to Video. |
+| [frontend/lib](frontend/lib) | Shared UI, Tauri calls, and motion-graphics templates. |
+| [src-tauri/src](src-tauri/src) | Rust backend. Commands connect the UI to the queue, coverage checks, narration, and video rendering. |
+| [scripts](scripts) | Scene export entry point used by the backend. |
+| [fixtures](fixtures) and [tests](tests) | Sample lecture material and frontend rendering tests. Rust acceptance tests live in [src-tauri/tests](src-tauri/tests). |
+
+Coding agents can start with [AGENTS.md](AGENTS.md) for the build order and acceptance checks.

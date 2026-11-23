@@ -1,5 +1,7 @@
 # Working on LearningEdge
 
+For video authoring through the standalone Antigravity CLI, always explicitly select `--model gemini-4-hydrogen-low --effort low` for concept extraction, scripting, and coverage review. If Hydrogen is unavailable, stop and report it. Change this selection only at the user's request. LearningEdge handles narration and video encoding separately.
+
 Read the [README](README.md), [workflow](docs/workflow.md), [tech stack](docs/tech-stack.md), and [user controls](docs/user-controls.md) before changing the pipeline. The workflow defines product behavior. The stack guide explains the proposed defaults and the conditions for revisiting them.
 
 ## Implementation order

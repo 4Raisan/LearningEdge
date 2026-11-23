@@ -6,11 +6,11 @@ Accept lecture audio or video, an existing transcript, and supporting materials 
 
 ## Generate and verify the notes
 
-Write short, plain-language notes at the selected depth. Keep the definitions, reasoning, qualifications, and examples needed to understand the material. Condense repetition and remove filler. Check the draft against the sources for missing concepts, unsupported claims, and distorted explanations. Revise flagged passages before using the notes to generate a script.
+Use the lecture as source material. Identify the concepts, theories, mechanisms, and relationships it teaches. Group related ideas across passages, drop filler and repetition, and explain the concepts in fresh language. Keep the definitions, reasoning, qualifications, and useful examples needed to understand the material. Check the outline against the sources for missing concepts, unsupported claims, and copied passages. Hold flagged outlines before rendering.
 
 ## Generate and verify the video plan
 
-Turn the verified notes into a narration script and storyboard. For every required note point, record the scene that explains it through narration or visuals. Check for missing, partial, and inaccurate explanations. Revise the script or storyboard and check coverage again before rendering. If automated revisions leave a gap, report it and hold rendering for review.
+Turn the verified concepts into a narration script and storyboard. For every required concept, record the scene that explains it through narration or visuals. Check for missing, partial, and inaccurate explanations. Revise the script or storyboard and check coverage again before rendering. If automated revisions leave a gap, report it and hold rendering for review.
 
 ## Render and check the explainer
 
