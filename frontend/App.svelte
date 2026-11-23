@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import denseFixture from "../fixtures/dense_overflow_scenes.json";
   import KonvaPreview from "./lib/components/KonvaPreview.svelte";
-  import LectureToVideo from "./lib/components/LectureToVideo.svelte";
+  import LectureToVideo from "./pages/LectureToVideo.svelte";
   import type { SceneSpec } from "./lib/renderer/types";
   import {
     invokeTauri,
@@ -24,6 +24,16 @@
   let videoSrc = $state("");
   let statusNotice = $state("");
   let busy = $state(false);
+  let usageMessage = $state("");
+
+  async function openUsage(provider: "antigravity" | "codex") {
+    try {
+      await invokeTauri("open_provider_usage", { provider });
+      usageMessage = provider === "antigravity" ? "Enter /usage in the Antigravity terminal." : "Opened the Codex usage dashboard in your browser.";
+    } catch (error) {
+      usageMessage = String(error);
+    }
+  }
 
   // Preview tab
   const fallbackScenes = denseFixture.scenes as SceneSpec[];
@@ -202,9 +212,11 @@
     <div class="notice card">{statusNotice}</div>
   {/if}
 
-  {#if activeTab === "lecture"}
+  <div hidden={activeTab !== "lecture"}>
     <LectureToVideo />
-  {:else if activeTab === "pipeline"}
+  </div>
+
+  {#if activeTab === "pipeline"}
     <section class="grid-2">
       <div class="card">
         <div class="row-between">
@@ -297,6 +309,12 @@
       {/if}
     </section>
   {:else if activeTab === "presets"}
+    <section class="card">
+      <h2>Subscription usage</h2>
+      <button disabled={!tauriMode} onclick={() => openUsage("antigravity")}>Antigravity usage</button>
+      <button disabled={!tauriMode} onclick={() => openUsage("codex")}>Codex usage</button>
+      <p class="muted" role="status">{tauriMode ? usageMessage : "Open LearningEdge desktop to view subscription usage."}</p>
+    </section>
     <section class="grid-2">
       <div class="card">
         <h2>Per-Stage Providers & Note Depth</h2>

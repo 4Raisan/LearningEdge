@@ -3,10 +3,10 @@ import Konva from "konva";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { auditSceneLayout, paginateScenes } from "../src/lib/renderer/layout";
-import { renderSceneAtTime } from "../src/lib/renderer/templates";
-import { THEME } from "../src/lib/renderer/theme";
-import type { SceneSpec, SentenceCue } from "../src/lib/renderer/types";
+import { auditSceneLayout, paginateScenes } from "../frontend/lib/renderer/layout";
+import { renderSceneAtTime } from "../frontend/lib/renderer/templates";
+import { THEME } from "../frontend/lib/renderer/theme";
+import type { SceneSpec, SentenceCue } from "../frontend/lib/renderer/types";
 
 interface RenderJobInput {
   scene: SceneSpec;

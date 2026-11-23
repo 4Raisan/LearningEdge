@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invokeTauri, isTauriRuntime, resolveVideoUrl, type RunArtifactsBundle } from "../lib/tauriApi";
   interface LectureItem {
     id: string;
     title: string;
@@ -7,6 +8,15 @@
     charCount: number;
     wordCount: number;
     pinned: boolean;
+    status: string;
+    stage?: string | null;
+    error?: string | null;
+    videoUrl?: string;
+    videoPath?: string;
+    durationMs?: number;
+    coverage?: RunArtifactsBundle["coverage_report"];
+    requiredPoints?: { id: string; title: string }[];
+    exportedIds?: string[];
   }
 
   // Recents list - starts empty per strict constraint (no mock data/sample items)
@@ -17,9 +27,22 @@
   let lectureText = $state("");
 
   // Video generation portal state
-  let isGenerating = $state(false);
-  let hasGenerated = $state(false);
-  let activeGenerationId = $state<string | null>(null);
+  let current = $derived(history.find((item) => item.id === selectedHistoryId));
+  let points = $derived(current?.requiredPoints ?? []);
+  let gaps = $derived(points.filter(point =>
+    current?.coverage?.issues.some(issue => issue.note_point_id === point.id)
+    || (current?.exportedIds && !current.exportedIds.includes(point.id))
+  ));
+  let covered = $derived(points.length - gaps.length);
+  let isGenerating = $derived(current?.status === "queued" || current?.status === "running");
+  const stageLabels: Record<string, string> = {
+    ingest: "Reading the lecture",
+    notes: "Extracting concepts and theories",
+    verify_notes: "Checking concepts against the lecture",
+    scene_plan: "Building the explainer scenes",
+    coverage_check: "Checking concept coverage",
+    narration_and_render: "Generating narration and motion graphics",
+  };
 
   // Rename editing state
   let editingId = $state<string | null>(null);
@@ -37,17 +60,49 @@
     ...history.filter((item) => !item.pinned),
   ]);
 
+  function updateItem(id: string, patch: Partial<LectureItem>) {
+    history = history.map((item) => item.id === id ? { ...item, ...patch } : item);
+  }
+
+  async function trackVideo(id: string, content: string) {
+    try {
+      if (!isTauriRuntime()) throw new Error("Open LearningEdge desktop to generate a video.");
+      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content });
+      while (true) {
+        const { run, video_manifest, coverage_report, verified_notes } = await invokeTauri<RunArtifactsBundle>("get_run_artifacts", { runId: run_id });
+        updateItem(id, {
+          status: run.status,
+          stage: run.current_stage,
+          error: run.error_message || run.held_reason,
+          coverage: coverage_report,
+          requiredPoints: verified_notes?.points.filter(point => point.required),
+          exportedIds: video_manifest?.trace_index.filter(entry =>
+            entry.video_segments.some(segment => segment.end_ms > segment.start_ms)
+          ).map(entry => entry.note_point_id),
+        });
+        if (run.status === "completed") {
+          if (!video_manifest) throw new Error("The export completed without a video file.");
+          updateItem(id, {
+            videoUrl: await resolveVideoUrl(video_manifest.video_path),
+            videoPath: video_manifest.video_path,
+            durationMs: video_manifest.total_duration_ms,
+          });
+          return;
+        }
+        if (run.status === "failed" || run.status === "held_for_review") return;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      updateItem(id, { status: "failed", error: String(error) });
+    }
+  }
+
   function handleSubmit() {
     const trimmed = lectureText.trim();
-    if (!trimmed) return;
-
-    // Trigger visual generation animation in the right-side portal
-    isGenerating = true;
-    hasGenerated = true;
+    if (!trimmed || isGenerating) return;
 
     // Generate unique ID
     const newId = "lec_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
-    activeGenerationId = newId;
 
     // Extract title from first line
     const firstLine = trimmed.split("\n")[0].trim();
@@ -61,16 +116,18 @@
       charCount: trimmed.length,
       wordCount: trimmed.split(/\s+/).filter(Boolean).length,
       pinned: false,
+      status: "queued",
     };
 
     // Add to recents (newest first)
     history = [newItem, ...history];
     selectedHistoryId = newId;
+    void trackVideo(newId, trimmed);
   }
 
   function handleKeydown(event: KeyboardEvent) {
     // Submit on Enter without Shift, or Ctrl+Enter / Cmd+Enter
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       handleSubmit();
     }
@@ -85,8 +142,6 @@
   function startNewLecture() {
     selectedHistoryId = null;
     lectureText = "";
-    isGenerating = false;
-    activeGenerationId = null;
     cancelRename();
   }
 
@@ -94,10 +149,6 @@
     history = [];
     selectedHistoryId = null;
     cancelRename();
-  }
-
-  function stopGenerating() {
-    isGenerating = false;
   }
 
   // --- Recents Item Actions: Rename, Pin, Delete ---
@@ -314,7 +365,7 @@
     <div class="area-header">
       <div>
         <h2>Lecture Input</h2>
-        <p class="area-subtitle">Type or paste lecture text, transcript, or study material</p>
+        <p class="area-subtitle">Paste lecture material to create an explainer of its key concepts.</p>
       </div>
       {#if selectedHistoryId}
         <span class="loaded-badge">Recents Item Loaded</span>
@@ -350,125 +401,73 @@
 
           <button
             class="submit-btn"
-            disabled={!lectureText.trim()}
+            disabled={!lectureText.trim() || isGenerating}
             onclick={handleSubmit}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
-            <span>Submit Lecture</span>
+            <span>Generate video</span>
           </button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 3. RIGHT-SIDE: Video-Generation Portal, Content Coverage, and Estimated Time -->
-  <section class="portal-area" aria-label="Video Generation Portal">
+  <section class="portal-area" aria-label="Video output">
     <div class="area-header">
       <div>
         <h2>Video Portal</h2>
-        <p class="area-subtitle">Interactive visual generation interface</p>
+        <p class="area-subtitle">Watch the generated explainer</p>
       </div>
-      <div class="portal-status-pill" class:active={isGenerating}>
+      <div class="portal-status-pill" class:active={isGenerating} role="status">
         <span class="status-indicator-dot"></span>
-        <span>{isGenerating ? "GENERATING" : "STANDBY"}</span>
+        <span>{current?.status.replaceAll("_", " ") ?? "Ready"}</span>
       </div>
     </div>
 
-    <!-- Portal Display Frame -->
-    <div class="portal-frame" class:generating={isGenerating}>
-      {#if isGenerating}
-        <!-- Video-generation animation & visual effect (pure UI interaction) -->
-        <div class="generation-viewport" role="img" aria-label="Video generation visual effect">
-          <!-- Ambient grid matrix background -->
-          <div class="grid-overlay"></div>
-
-          <!-- Pulsing energy core and concentric orbital rings -->
-          <div class="portal-orb-system">
-            <div class="orbital-ring ring-1"></div>
-            <div class="orbital-ring ring-2"></div>
-            <div class="orbital-ring ring-3"></div>
-            <div class="portal-core">
-              <div class="core-pulse"></div>
-            </div>
-          </div>
-
-          <!-- Vertical scanning laser beam -->
-          <div class="scan-beam"></div>
-
-          <!-- Motion-graphics wave bars -->
-          <div class="waveform-container">
-            <div class="wave-bar b1"></div>
-            <div class="wave-bar b2"></div>
-            <div class="wave-bar b3"></div>
-            <div class="wave-bar b4"></div>
-            <div class="wave-bar b5"></div>
-            <div class="wave-bar b6"></div>
-            <div class="wave-bar b7"></div>
-            <div class="wave-bar b8"></div>
-          </div>
-
-          <!-- Generation info overlay -->
-          <div class="generating-meta">
-            <span class="gen-tag">UI INTERACTION ACTIVE</span>
-            <span class="gen-title">Synthesizing explainer visuals</span>
-          </div>
-
-          <!-- Stop / Dismiss Control -->
-          <button class="stop-effect-btn" onclick={stopGenerating}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="4" y="4" width="16" height="16" rx="2"></rect>
-            </svg>
-            <span>Stop Effect</span>
-          </button>
-        </div>
+    <div class="portal-frame">
+      {#if current?.videoUrl}
+        {#key current.videoUrl}
+          <!-- The exported MP4 already contains its caption track. -->
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video class="explainer-video" controls src={current.videoUrl}></video>
+        {/key}
       {:else}
-        <!-- Sensible empty state for the video portal -->
         <div class="portal-empty-state">
-          <div class="portal-empty-icon">
-            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <rect x="2" y="2" width="20" height="20" rx="4"></rect>
-              <polygon points="10 8 16 12 10 16 10 8"></polygon>
-            </svg>
-          </div>
-          <p class="portal-empty-title">Portal Standby</p>
-          <p class="portal-empty-desc">
-            Submit lecture text to trigger the video generation visual effect.
+          <p class="portal-empty-title">
+            {isGenerating ? (stageLabels[current?.stage ?? ""] ?? "Queued for generation") : "Your video will appear here"}
           </p>
+          {#if !current}
+            <p class="portal-empty-desc">Enter lecture text and select Generate video.</p>
+          {/if}
         </div>
       {/if}
     </div>
 
-    <!-- Below the portal: Content Coverage (shown after video generation) -->
-    {#if hasGenerated}
+    {#if current?.error}
+      <p class="generation-error" role="alert">{current.error}</p>
+    {/if}
+    {#if current}
       <div class="coverage-card">
-        <div class="coverage-top-row">
-          <span class="coverage-label">Lecture Content Coverage</span>
-          <span class="coverage-badge">AWAITING ENGINE</span>
-        </div>
-        <div class="coverage-value-display">
-          “Coverage: --% / 100%”
-        </div>
-        <p class="coverage-paragraph">
-          This explainer video covers --% of the submitted lecture content. Once the coverage verification engine is active, the included material will be calculated and reported out of 100%.
-        </p>
+        <span class="coverage-label">{current.exportedIds ? "Video" : "Script"} concept coverage</span>
+        {#if current.coverage && points.length && (current.coverage.passed || gaps.length)}
+          <progress aria-label="Required concepts covered" value={covered} max={points.length}></progress>
+          <span>{covered}/{points.length} covered · {gaps.length} missed or incomplete · {Math.floor(100 * covered / points.length)}%</span>
+          {#if gaps.length}
+            <ul>{#each gaps as point}<li>{point.title}</li>{/each}</ul>
+          {/if}
+        {:else}
+          <span>{current.coverage || current.status === "held_for_review" ? "Coverage needs review" : "Awaiting concept verification"}</span>
+        {/if}
       </div>
     {/if}
-
-    <!-- Below the portal: Estimated-time area -->
-    <div class="estimated-time-card">
-      <div class="est-top-row">
-        <span class="est-label">Estimated Time</span>
-        <span class="est-badge">AWAITING ENGINE</span>
-      </div>
-      <div class="est-value-display">
-        “Estimated time will appear here.”
-      </div>
-      <p class="est-info-text">
-        Render duration and encoding estimates will be calculated once connected to the pipeline.
-      </p>
-    </div>
+    {#if current?.durationMs}
+      <p class="area-subtitle">Video length · {(current.durationMs / 1000).toFixed(1)} seconds</p>
+    {/if}
+    {#if current?.videoPath}
+      <p class="area-subtitle output-path">Saved to {current.videoPath}</p>
+    {/if}
   </section>
 </div>
 
@@ -481,7 +480,7 @@
     grid-template-columns: 290px 1fr 390px;
     gap: 20px;
     width: 100%;
-    min-height: calc(100vh - 120px);
+    min-height: calc(100vh - 205px);
     background: #000000;
     color: #ffffff;
     box-sizing: border-box;
@@ -999,374 +998,57 @@
 
   /* Portal Frame */
   .portal-frame {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    min-height: 230px;
-    background: #090909;
-    border: 1px solid #222222;
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+    background: #0b0b0b;
+    border: 1px solid #282828;
     border-radius: 10px;
     overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: border-color 0.3s;
   }
 
-  .portal-frame.generating {
-    border-color: #444444;
-    box-shadow: 0 0 25px rgba(255, 255, 255, 0.06);
-  }
-
-  /* Portal Empty State */
   .portal-empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
     padding: 24px;
-    color: #666666;
-  }
-
-  .portal-empty-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 64px;
-    height: 64px;
-    border-radius: 12px;
-    background: #111111;
-    border: 1px solid #222222;
-    color: #555555;
-    margin-bottom: 12px;
+    text-align: center;
+    color: #c9c9c9;
   }
 
   .portal-empty-title {
-    margin: 0 0 4px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #aaaaaa;
+    text-transform: capitalize;
   }
 
-  .portal-empty-desc {
-    margin: 0;
-    font-size: 12px;
-    line-height: 1.45;
-    color: #666666;
-    max-width: 240px;
-  }
-
-  /* Active Video-Generation Animation Viewport */
-  .generation-viewport {
-    position: relative;
+  .explainer-video {
     width: 100%;
-    height: 100%;
-    background: radial-gradient(circle at center, #151515 0%, #050505 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    display: block;
   }
 
-  /* Background Grid Overlay */
-  .grid-overlay {
-    position: absolute;
-    inset: 0;
-    background-image:
-      linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 20px 20px;
-    opacity: 0.8;
+  .coverage-card, .generation-error {
+    padding: 12px;
+    border: 1px solid #303030;
+    border-radius: 8px;
   }
 
-  /* Concentric Rotating Orbital Rings & Core */
-  .portal-orb-system {
-    position: relative;
-    width: 140px;
-    height: 140px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .orbital-ring {
-    position: absolute;
-    border-radius: 50%;
-    border: 1px dashed rgba(255, 255, 255, 0.25);
-  }
-
-  .ring-1 {
-    width: 130px;
-    height: 130px;
-    animation: spinClockwise 12s linear infinite;
-    border-color: rgba(255, 255, 255, 0.2);
-  }
-
-  .ring-2 {
-    width: 95px;
-    height: 95px;
-    border-style: solid;
-    border-width: 1px 1px 0 0;
-    border-color: rgba(255, 255, 255, 0.45);
-    animation: spinCounter 7s linear infinite;
-  }
-
-  .ring-3 {
-    width: 65px;
-    height: 65px;
-    border-style: dotted;
-    border-width: 2px;
-    border-color: rgba(255, 255, 255, 0.35);
-    animation: spinClockwise 4s linear infinite;
-  }
-
-  .portal-core {
-    position: relative;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #ffffff;
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .core-pulse {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.6);
-    animation: corePulse 2s ease-in-out infinite;
-  }
-
-  @keyframes spinClockwise {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  @keyframes spinCounter {
-    from { transform: rotate(360deg); }
-    to { transform: rotate(0deg); }
-  }
-
-  @keyframes corePulse {
-    0%, 100% { transform: scale(1); opacity: 0.6; }
-    50% { transform: scale(1.6); opacity: 0.15; }
-  }
-
-  /* Laser Scanning Beam */
-  .scan-beam {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
-    animation: scanMotion 3s ease-in-out infinite;
-  }
-
-  @keyframes scanMotion {
-    0% { top: 0%; opacity: 0; }
-    15% { opacity: 1; }
-    85% { opacity: 1; }
-    100% { top: 100%; opacity: 0; }
-  }
-
-  /* Equalizer / Motion Wave Bars */
-  .waveform-container {
-    position: absolute;
-    bottom: 12px;
-    left: 16px;
-    right: 16px;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-    gap: 4px;
-    height: 24px;
-  }
-
-  .wave-bar {
-    width: 3px;
-    background: rgba(255, 255, 255, 0.5);
-    border-radius: 2px;
-    animation: waveBounce 1.2s ease-in-out infinite;
-  }
-
-  .b1 { height: 6px; animation-delay: 0.0s; }
-  .b2 { height: 14px; animation-delay: 0.2s; }
-  .b3 { height: 20px; animation-delay: 0.4s; }
-  .b4 { height: 10px; animation-delay: 0.1s; }
-  .b5 { height: 18px; animation-delay: 0.3s; }
-  .b6 { height: 12px; animation-delay: 0.5s; }
-  .b7 { height: 22px; animation-delay: 0.25s; }
-  .b8 { height: 8px; animation-delay: 0.15s; }
-
-  @keyframes waveBounce {
-    0%, 100% { transform: scaleY(0.4); opacity: 0.3; }
-    50% { transform: scaleY(1); opacity: 0.9; }
-  }
-
-  /* Generation Metadata Overlay */
-  .generating-meta {
-    position: absolute;
-    top: 12px;
-    left: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    pointer-events: none;
-  }
-
-  .gen-tag {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: #aaaaaa;
-  }
-
-  .gen-title {
-    font-size: 11px;
-    font-weight: 500;
-    color: #ffffff;
-  }
-
-  .stop-effect-btn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background: rgba(0, 0, 0, 0.75);
-    color: #cccccc;
-    border: 1px solid #333333;
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    backdrop-filter: blur(4px);
-    transition: all 0.15s;
-    z-index: 2;
-  }
-
-  .stop-effect-btn:hover {
-    background: #000000;
-    color: #ffffff;
-    border-color: #666666;
-  }
-
-  /* ---------------- Content Coverage Section ---------------- */
   .coverage-card {
-    background: #090909;
-    border: 1px solid #222222;
-    border-radius: 10px;
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    animation: fadeIn 0.3s ease;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .coverage-top-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: grid;
+    gap: 4px;
   }
 
   .coverage-label {
-    font-size: 12px;
     font-weight: 600;
-    color: #888888;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+  }
+  .coverage-card progress {
+    width: 100%;
+    accent-color: #56dba4;
   }
 
-  .coverage-badge {
-    font-size: 10px;
-    font-weight: 600;
-    color: #888888;
-    background: #141414;
-    border: 1px solid #262626;
-    padding: 2px 6px;
-    border-radius: 4px;
-    letter-spacing: 0.04em;
+  .generation-error {
+    color: #ffb3b3;
+    overflow-wrap: anywhere;
   }
 
-  .coverage-value-display {
-    font-size: 14px;
-    font-weight: 600;
-    color: #ffffff;
-    padding: 8px 10px;
-    background: #111111;
-    border: 1px dashed #333333;
-    border-radius: 6px;
-  }
-
-  .coverage-paragraph {
-    margin: 0;
-    font-size: 12px;
-    color: #a0a0a0;
-    line-height: 1.5;
-  }
-
-  /* ---------------- Estimated-Time Area ---------------- */
-  .estimated-time-card {
-    background: #090909;
-    border: 1px solid #222222;
-    border-radius: 10px;
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .est-top-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .est-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: #888888;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .est-badge {
-    font-size: 10px;
-    font-weight: 600;
-    color: #888888;
-    background: #141414;
-    border: 1px solid #262626;
-    padding: 2px 6px;
-    border-radius: 4px;
-    letter-spacing: 0.04em;
-  }
-
-  .est-value-display {
-    font-size: 14px;
-    font-weight: 500;
-    color: #ffffff;
-    padding: 8px 10px;
-    background: #111111;
-    border: 1px dashed #333333;
-    border-radius: 6px;
-  }
-
-  .est-info-text {
-    margin: 2px 0 0;
-    font-size: 11px;
-    color: #666666;
-    line-height: 1.4;
+  .output-path {
+    overflow-wrap: anywhere;
+    user-select: text;
   }
 
   /* ---------------- Responsive Styles ---------------- */

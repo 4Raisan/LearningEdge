@@ -3,10 +3,10 @@ import Konva from "konva";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { auditSceneLayout, paginateScene, paginateScenes } from "../src/lib/renderer/layout";
-import { renderSceneAtTime } from "../src/lib/renderer/templates";
-import { THEME } from "../src/lib/renderer/theme";
-import type { SceneSpec, SentenceCue } from "../src/lib/renderer/types";
+import { auditSceneLayout, paginateScene, paginateScenes } from "../frontend/lib/renderer/layout";
+import { renderSceneAtTime } from "../frontend/lib/renderer/templates";
+import { THEME } from "../frontend/lib/renderer/theme";
+import type { SceneSpec, SentenceCue } from "../frontend/lib/renderer/types";
 
 const denseFixturePath = path.resolve(
   __dirname,

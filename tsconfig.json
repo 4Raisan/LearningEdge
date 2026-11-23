@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["frontend/**/*.ts", "frontend/**/*.svelte", "scripts/**/*.ts", "tests/**/*.ts"]
 }
