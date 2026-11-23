@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use learningedge_lib::{
     db, kg,
-    models::PresetConfig,
+    models::{PresetConfig, TranscriptFixture},
     pipeline::{
         orchestrator::{create_pipeline_run, load_run_artifacts_bundle},
         render::ffprobe_media_json,
@@ -23,8 +23,9 @@ async fn main() -> Result<()> {
 
     let args: Vec<String> = std::env::args().collect();
     let tools = sidecars::resolve_tools(None)?;
-    let mut fixture = tools.project_root.join("fixtures").join("cpu_caching_lecture.json");
-    let mut slides = Some(tools.project_root.join("fixtures").join("cpu_caching_slides.json"));
+    let default_fixture = tools.project_root.join("fixtures").join("cpu_caching_lecture.json");
+    let mut fixture = default_fixture.clone();
+    let mut slides = None;
     let mut out_root = tools.project_root.join("artifacts").join("cli-run");
 
     let mut i = 1;
@@ -48,6 +49,10 @@ async fn main() -> Result<()> {
         }
     }
 
+    if fixture == default_fixture && slides.is_none() {
+        slides = Some(tools.project_root.join("fixtures").join("cpu_caching_slides.json"));
+    }
+    let source: TranscriptFixture = serde_json::from_slice(&tokio::fs::read(&fixture).await?)?;
     tokio::fs::create_dir_all(&out_root).await?;
     let db_path = out_root.join("learningedge.db");
     let pool = db::init_db(&db_path).await?;
@@ -55,7 +60,7 @@ async fn main() -> Result<()> {
 
     let preset = PresetConfig::default();
     let run_dir = out_root.join("latest");
-    let run_id = create_pipeline_run(&pool, "lec-cpu-caching-01", &preset, &run_dir, None).await?;
+    let run_id = create_pipeline_run(&pool, &source.lecture_id, &preset, &run_dir, None).await?;
 
     enqueue_pipeline_job(
         &pool,

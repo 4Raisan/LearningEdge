@@ -61,6 +61,14 @@ pub async fn verify_scene_plan_coverage(
     }
 
     let required_points: Vec<_> = notes.points.iter().filter(|p| p.required).collect();
+    if required_points.is_empty() {
+        issues.push(CoverageIssue {
+            note_point_id: "outline".into(),
+            scene_id: None,
+            kind: CoverageIssueKind::InvalidStructure,
+            message: "The outline contains no required concepts to verify.".into(),
+        });
+    }
     for pt in &required_points {
         if !covered_note_ids.contains(&pt.id) {
             issues.push(CoverageIssue {

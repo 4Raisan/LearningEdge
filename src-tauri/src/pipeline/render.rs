@@ -502,6 +502,9 @@ pub async fn render_scene_plan_to_video(
             .iter()
             .filter(|e| e.note_point_ids.contains(&pt.id))
             .collect();
+        if pt.required && !matching.iter().any(|scene| scene.end_ms > scene.start_ms) {
+            return Err(anyhow!("Required concept '{}' has no timed segment in the export.", pt.title));
+        }
         let scene_ids = matching.iter().map(|e| e.scene_id.clone()).collect();
         let video_segments = matching
             .iter()
