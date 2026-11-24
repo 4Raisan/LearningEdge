@@ -47,7 +47,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            studio::studio_models, studio::studio_connect, studio::agy_models, studio::antigravity_status, studio::studio_verify, studio::hosted_key, studio::hosted_models, studio::concept_markdown, studio::open_concept_note,
+            studio::studio_verify, studio::hosted_key, studio::hosted_models, studio::agy_models, studio::antigravity_status, studio::concept_markdown, studio::open_concept_note, studio::studio_models, studio::studio_connect, studio::graph_chat,
             commands::open_provider_usage,
             commands::run_fixture_pipeline,
             commands::run_lecture_text,

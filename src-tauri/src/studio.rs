@@ -156,3 +156,42 @@ pub fn studio_connect(provider: &str) -> Result<(), String> {
     Err(format!("Open {provider} in your terminal to connect."))
 }
 
+#[tauri::command]
+pub async fn graph_chat(
+    state: State<'_, AppState>,
+    choice: Choice,
+    concept_id: String,
+    question: String,
+    history: Vec<String>,
+) -> Result<String, String> {
+    let graph = crate::kg::get_knowledge_graph(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let node = graph
+        .concepts
+        .iter()
+        .find(|c| c.id == concept_id)
+        .ok_or("Select a saved concept.")?;
+    let edges: Vec<_> = graph
+        .edges
+        .iter()
+        .filter(|e| e.from_concept_id == node.id || e.to_concept_id == node.id)
+        .collect();
+    let neighbors: Vec<_> = graph
+        .concepts
+        .iter()
+        .filter(|c| {
+            edges
+                .iter()
+                .any(|e| e.from_concept_id == c.id || e.to_concept_id == c.id)
+        })
+        .collect();
+    let reply = ConceptTextProvider::new(choice.config()?).chat_json(
+        "Answer the learner about the selected concept using the supplied graph evidence. Cite the relevant concept names. Identify gaps in the evidence. Return JSON with one string field answer.",
+        &json!({"concept":node,"relationships":edges,"related":neighbors,"conversation":history,"question":question}).to_string()
+    ).await.map_err(|e|e.to_string())?;
+    reply["answer"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or("Model returned no answer.".into())
+}
