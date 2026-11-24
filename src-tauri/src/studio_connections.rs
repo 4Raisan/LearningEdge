@@ -63,3 +63,33 @@ pub fn markdown(notes:&VerifiedNotes)->String {
     }
     text
 }
+#[tauri::command]
+pub async fn concept_markdown(state:State<'_,AppState>,concept_id:String)->Result<Vec<Value>,String>{
+    let runs:Vec<String>=sqlx::query_scalar("SELECT DISTINCT r.output_dir FROM pipeline_runs r JOIN kg_concept_links l ON r.lecture_id=l.lecture_id WHERE l.concept_id=? AND r.status='completed' ORDER BY r.created_at DESC")
+        .bind(concept_id).fetch_all(&state.pool).await.map_err(|e|e.to_string())?;
+    let mut docs=Vec::new();
+    for run in runs{
+        let dir=PathBuf::from(run);
+        let path=dir.join("verified_notes.md");
+        let body=match tokio::fs::read_to_string(&path).await{
+            Ok(text)=>text,
+            Err(e) if e.kind()==std::io::ErrorKind::NotFound=>{
+                let Ok(raw)=tokio::fs::read(dir.join("verified_notes.json")).await else{continue};
+                let notes:VerifiedNotes=serde_json::from_slice(&raw).map_err(|e|e.to_string())?;
+                let text=markdown(&notes);
+                tokio::fs::write(&path,&text).await.map_err(|e|e.to_string())?;
+                text
+            }
+            Err(e)=>return Err(e.to_string())
+        };
+        docs.push(json!({"title":body.lines().next().unwrap_or("Lecture notes").trim_start_matches('#').trim(),"body":body,"path":path}));
+    }
+    Ok(docs)
+}
+
+#[tauri::command]
+pub async fn open_concept_note(state:State<'_,AppState>,concept_id:String,index:usize)->Result<(),String>{
+    let notes=concept_markdown(state,concept_id).await?;
+    let path=notes.get(index).and_then(|n|n["path"].as_str()).ok_or("Lecture note unavailable")?;
+    Command::new("explorer.exe").arg(path).spawn().map(|_|()).map_err(|e|e.to_string())
+}
