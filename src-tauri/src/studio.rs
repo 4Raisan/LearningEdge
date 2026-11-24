@@ -1,3 +1,6 @@
+#[path = "studio_connections.rs"]
+mod connections;
+pub use connections::*;
 use serde_json::{json,Value};
 use std::{path::PathBuf,process::Command};
 #[tauri::command]
@@ -77,5 +80,27 @@ pub async fn studio_models() -> Result<Value, String> {
         }
     }
     Ok(json!(models))
+}
+
+#[tauri::command]
+pub fn studio_connect(provider: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = Command::new("cmd.exe");
+        let line = match provider {
+            "codex_cli" => "codex login",
+            "ollama" => "ollama list",
+            "antigravity" => return crate::commands::open_provider_usage("antigravity"),
+            _ => return Err("Unknown provider".into()),
+        };
+        cmd.creation_flags(0x10)
+            .args(["/d", "/k", line])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    Err(format!("Open {provider} in your terminal to connect."))
 }
 
