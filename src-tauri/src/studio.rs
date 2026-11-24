@@ -42,6 +42,19 @@ impl Choice {
     }
 }
 
+fn default_graph() -> bool { true }
+
+#[derive(Deserialize)]
+pub struct LectureSettings {
+    #[serde(default)] pub portrait: bool,
+    #[serde(default)] pub video_theme: String,
+    #[serde(default = "default_graph")]
+    pub auto_graph: bool,
+    pub notes: Choice,
+    pub video: Choice,
+    pub depth: NoteDepth,
+}
+
 #[tauri::command]
 pub async fn studio_models() -> Result<Value, String> {
     let home = PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default());

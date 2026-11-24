@@ -34,8 +34,9 @@ pub async fn run_lecture_text(
     state: State<'_, AppState>,
     lecture_text: String,
     use_codex: Option<bool>,
+    settings: Option<crate::studio::LectureSettings>,
 ) -> Result<EnqueueFixtureResponse, String> {
-    let run_id = enqueue_lecture_text(&state.pool, &state.data_dir, &lecture_text, use_codex.unwrap_or(false))
+    let run_id = enqueue_configured(&state.pool, &state.data_dir, &lecture_text, use_codex.unwrap_or(false), settings)
         .await
         .map_err(|e| e.to_string())?;
     Ok(EnqueueFixtureResponse { run_id, status: "queued".into() })
@@ -47,6 +48,11 @@ pub async fn enqueue_lecture_text(
     lecture_text: &str,
     use_codex: bool,
 ) -> anyhow::Result<String> {
+    enqueue_configured(pool, data_dir, lecture_text, use_codex, None).await
+}
+
+pub async fn enqueue_configured(pool: &SqlitePool, data_dir: &std::path::Path, lecture_text: &str,
+    use_codex: bool, settings: Option<crate::studio::LectureSettings>) -> anyhow::Result<String> {
     let text = lecture_text.trim();
     anyhow::ensure!(!text.is_empty(), "Enter some lecture text first.");
     let lecture_id = format!("lecture-{}", uuid::Uuid::new_v4());
@@ -90,6 +96,16 @@ pub async fn enqueue_lecture_text(
     preset.notes_stage = concept_stage.clone();
     preset.verify_stage = concept_stage.clone();
     preset.coverage_stage = concept_stage;
+    if let Some(settings) = settings {
+        let notes = settings.notes.config().map_err(anyhow::Error::msg)?;
+        let video = settings.video.config().map_err(anyhow::Error::msg)?;
+        preset.offline_only = notes.provider == StageProviderKind::Ollama && video.provider == StageProviderKind::Ollama;
+        preset.note_depth = settings.depth;
+        preset.verify_stage = notes.clone();
+        preset.notes_stage = notes;
+        preset.scene_plan_stage = video.clone();
+        preset.coverage_stage = video;
+    }
     let run_id = create_pipeline_run(pool, &lecture_id, &preset, &output_dir, None).await?;
     let job = PipelineJob {
         run_id: run_id.clone(),
