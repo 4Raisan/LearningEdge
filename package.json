@@ -16,6 +16,7 @@
     "@napi-rs/canvas": "^1.2.0",
     "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-shell": "^2.2.1",
+    "cytoscape": "^3.35.0",
     "konva": "^10.10.0"
   },
   "devDependencies": {
