@@ -91,7 +91,17 @@ async function runPaginate(inputPath: string, outputPath: string) {
 
 async function runRender(inputPath: string) {
   const raw = await fs.readFile(inputPath, "utf8");
-  const job = JSON.parse(raw) as RenderJobInput;
+  const job = JSON.parse(raw) as RenderJobInput & {theme?:string};
+  if (job.theme === "light" || job.theme === "forest") {
+    const forest = job.theme === "forest";
+    Object.assign(THEME.colors, {
+      bg: forest ? "#102820" : "#f5f3ec", bgTopGlow: forest ? "#214332" : "#edf1f6",
+      surface: forest ? "#244335" : "#ffffff", surfaceActive: forest ? "#305742" : "#dcebf6",
+      surfaceBorder: forest ? "#597866" : "#9caab6", accent: forest ? "#abdfa8" : "#146392",
+      accentSoft: forest ? "#355642" : "#cee5f3", textPrimary: forest ? "#f5fbef" : "#152634",
+      textSecondary: forest ? "#d0e4ce" : "#354957", textMuted: forest ? "#b1cbb4" : "#485969"
+    });
+  }
   const width = job.width ?? THEME.width;
   const height = job.height ?? THEME.height;
   const fps = job.fps ?? 30;

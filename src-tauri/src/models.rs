@@ -305,6 +305,7 @@ pub struct StageProviderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresetConfig {
+    #[serde(default)] pub video_theme: String,
     #[serde(default = "default_true")]
     pub auto_graph: bool,
     pub id: String,
@@ -353,6 +354,7 @@ impl Default for PresetConfig {
         };
         Self {
             auto_graph: true,
+            video_theme: String::new(),
             id: "preset-local-default".to_string(),
             name: "Local Offline Default".to_string(),
             note_depth: NoteDepth::Standard,

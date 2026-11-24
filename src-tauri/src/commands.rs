@@ -102,6 +102,8 @@ pub async fn enqueue_configured(pool: &SqlitePool, data_dir: &std::path::Path, l
         preset.offline_only = notes.provider == StageProviderKind::Ollama && video.provider == StageProviderKind::Ollama;
         preset.note_depth = settings.depth;
         preset.auto_graph = settings.auto_graph;
+        if settings.portrait { std::mem::swap(&mut preset.width, &mut preset.height); }
+        preset.video_theme = settings.video_theme;
         preset.verify_stage = notes.clone();
         preset.notes_stage = notes;
         preset.scene_plan_stage = video.clone();

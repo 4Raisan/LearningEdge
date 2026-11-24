@@ -34,6 +34,7 @@ struct RenderSceneJob<'a> {
     frame_count: u32,
     width: u32,
     height: u32,
+    theme: &'a str,
     output_mp4: String,
     ffmpeg_path: String,
     show_captions: bool,
@@ -281,6 +282,7 @@ pub async fn render_scene_plan_to_video(
             "fps": fps,
             "width": width,
             "height": height,
+            "theme": preset.video_theme,
             "renderer_version": "konva-v1"
         });
         let clip_hash = sha256_hex(serde_json::to_string(&clip_input)?.as_bytes());
@@ -303,7 +305,8 @@ pub async fn render_scene_plan_to_video(
                     frame_count,
                     width,
                     height,
-                    &target_clip,
+                    &preset.video_theme,
+                &target_clip,
                 )
                 .await?;
                 db::upsert_scene_artifact(
@@ -330,6 +333,7 @@ pub async fn render_scene_plan_to_video(
                 frame_count,
                 width,
                 height,
+                &preset.video_theme,
                 &target_clip,
             )
             .await?;
@@ -558,6 +562,7 @@ async fn run_konva_scene_export(
     frame_count: u32,
     width: u32,
     height: u32,
+    theme: &str,
     output_mp4: &Path,
 ) -> Result<()> {
     let job_path = output_mp4.with_extension("render_job.json");
@@ -568,6 +573,7 @@ async fn run_konva_scene_export(
         frame_count,
         width,
         height,
+        theme,
         output_mp4: output_mp4.to_string_lossy().to_string(),
         ffmpeg_path: tools.ffmpeg.to_string_lossy().to_string(),
         show_captions: false,
