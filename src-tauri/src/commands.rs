@@ -101,6 +101,7 @@ pub async fn enqueue_configured(pool: &SqlitePool, data_dir: &std::path::Path, l
         let video = settings.video.config().map_err(anyhow::Error::msg)?;
         preset.offline_only = notes.provider == StageProviderKind::Ollama && video.provider == StageProviderKind::Ollama;
         preset.note_depth = settings.depth;
+        preset.auto_graph = settings.auto_graph;
         preset.verify_stage = notes.clone();
         preset.notes_stage = notes;
         preset.scene_plan_stage = video.clone();

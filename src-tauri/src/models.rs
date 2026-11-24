@@ -305,6 +305,8 @@ pub struct StageProviderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresetConfig {
+    #[serde(default = "default_true")]
+    pub auto_graph: bool,
     pub id: String,
     pub name: String,
     pub note_depth: NoteDepth,
@@ -350,6 +352,7 @@ impl Default for PresetConfig {
             base_url: None,
         };
         Self {
+            auto_graph: true,
             id: "preset-local-default".to_string(),
             name: "Local Offline Default".to_string(),
             note_depth: NoteDepth::Standard,

@@ -44,7 +44,7 @@ async fn handle_pipeline_job(
     .await
     {
         Ok(rec) => {
-            if rec.status == "completed" {
+            if rec.status == "completed" && serde_json::from_str::<crate::models::PresetConfig>(&rec.preset_snapshot_json)?.auto_graph {
                 if let Ok(bundle) = load_run_artifacts_bundle(&data.pool, &job.run_id).await {
                     if let Some(notes) = bundle.verified_notes {
                         let _ = kg::populate_kg_from_run(
