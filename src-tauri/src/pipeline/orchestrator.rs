@@ -376,7 +376,19 @@ pub async fn execute_pipeline_run(
         reused: false,
     });
 
-
+    db::update_run_status(pool, run_id, "running", Some("verify_export"), None, None, None).await?;
+    let mut final_plan: ScenePlan = serde_json::from_slice(&tokio::fs::read(out_dir.join("paginated_scene_plan.json")).await?)?;
+    for scene in &mut final_plan.scenes {
+        let entry = render_stats.manifest.scenes.iter().find(|e| e.scene_id == scene.scene_id)
+            .ok_or_else(|| anyhow!("Export missing scene {}", scene.scene_id))?;
+        scene.narration_sentences = entry.cues.iter().map(|c|c.text.clone()).collect();
+    }
+    let report = verify_scene_plan_coverage(&verified_notes, &final_plan, Some(coverage_provider.as_ref())).await?;
+    tokio::fs::write(&coverage_path, serde_json::to_vec_pretty(&report)?).await?;
+    if !report.passed {
+        db::update_run_status(pool, run_id, "held_for_review", Some("verify_export"), Some("The rendered script has unresolved coverage gaps."), None, None).await?;
+        return Ok(db::get_pipeline_run(pool, run_id).await?.unwrap());
+    }
     let metrics = BenchmarkMetrics {
         total_duration_ms: overall_start.elapsed().as_millis() as u64,
         peak_working_set_bytes: query_peak_working_set_bytes(),

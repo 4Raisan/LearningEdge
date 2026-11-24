@@ -500,6 +500,18 @@ pub async fn render_scene_plan_to_video(
     }
 
     // 5. Build end-to-end source -> note -> video timestamp traceability index
+    let media = final_mp4.clone();
+    let ffmpeg = tools.ffmpeg.clone();
+    let exported = tokio::task::spawn_blocking(move || Command::new(ffmpeg)
+        .arg("-v").arg("error").arg("-i").arg(media)
+        .args(["-map", "0:s:0", "-f", "srt", "pipe:1"]).output()).await??;
+    if !exported.status.success() { return Err(anyhow!("Could not read the exported caption track.")); }
+    let subtitles = String::from_utf8(exported.stdout)?.replace("\r\n", "\n");
+    let actual: Vec<_> = subtitles.trim().split("\n\n")
+        .flat_map(|cue| cue.lines().skip(2)).flat_map(str::split_whitespace).collect();
+    let expected: Vec<_> = entries.iter().flat_map(|scene| &scene.cues)
+        .flat_map(|cue| cue.text.split_whitespace()).collect();
+    if actual != expected { return Err(anyhow!("Exported captions differ from the timed narration script.")); }
     let mut trace_index = Vec::with_capacity(notes.points.len());
     for pt in &notes.points {
         let matching: Vec<&VideoSceneEntry> = entries
