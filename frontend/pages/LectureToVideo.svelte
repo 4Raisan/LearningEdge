@@ -1,4 +1,5 @@
 <script lang="ts">
+  let {settings=$bindable()}:{settings:import("../lib/studio").Preferences}=$props();
   import { invokeTauri, isTauriRuntime, resolveVideoUrl, type RunArtifactsBundle } from "../lib/tauriApi";
   interface LectureItem {
     id: string;

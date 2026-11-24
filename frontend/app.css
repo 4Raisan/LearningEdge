@@ -94,3 +94,40 @@ button {
   color: var(--rose);
   border-color: #e11d48;
 }
+
+.workspace {display:grid; gap:16px;max-width:1200px;margin:auto;}
+.workspace h2,.workspace h3 {margin:0;}
+.workspace p {color:#afbbc2;}
+button, select, .workspace input {background:#121619;color:#e9eef0;border:1px solid #364047;border-radius:7px;padding:7px 12px;}
+button:disabled {opacity:.5}
+button:focus-visible,select:focus-visible,input:focus-visible {outline:2px solid #91cee6;outline-offset:2px}
+.tiles {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px}
+.tiles details {margin-top:10px;overflow-wrap:anywhere}
+.modelrow,.sectionline {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.modelrow {background:#101417;border:1px solid #292f33;border-radius:10px;padding:16px}
+.modelrow strong {flex:1;min-width:150px}
+.modelrow label {display:grid;gap:4px;font-size:13px;color:#afbbc2;max-width:100%}
+.modelrow select {max-width:100%}
+
+html,body,#app{height:100%;overflow:hidden}
+main.shell{height:100dvh;display:flex;flex-direction:column;min-height:0;padding:clamp(8px,1.4vw,22px)}
+.shell .topbar{flex:none;margin-bottom:12px;padding-bottom:10px}
+.shell>div:not([hidden]){flex:1;min-height:0;overflow:auto}
+.shell .providers{width:100%;max-width:none;align-content:start;overflow:auto;min-height:0;margin:0}
+.shell .lecture-screen{height:100%;min-height:0}
+.shell .lecture-screen .input-card,.shell .lecture-screen .lecture-textarea,.shell .central-area{min-height:0}
+.shell .lecture-screen .sidebar,.shell .lecture-screen .portal-area{min-height:0;overflow:auto}
+.shell .lecture-screen .input-bottom-bar{padding:8px 12px}
+.shell .lecture-screen .input-actions{flex-wrap:wrap}
+@media(max-width:900px){.shell .lecture-screen{height:auto;min-height:100%;align-content:start}.shell .lecture-screen .lecture-textarea{min-height:18vh}.shell .providers .tiles{grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))}}
+
+:root[data-theme=light]{color-scheme:light;--bg:#f6f5f0;--panel:#fffefa;--panel-alt:#e9edf0;--border:#b7c3c8;--text:#182a32;--muted:#465e68;--accent:#164e65}
+:root[data-theme=forest]{color-scheme:light;--bg:#dceadd;--panel:#f2f7ed;--panel-alt:#d3e5d4;--border:#9ab49e;--text:#193c2c;--muted:#425f4b;--accent:#265d3d}
+:root:is([data-theme=light],[data-theme=forest]) body,:root:is([data-theme=light],[data-theme=forest]) .lecture-screen{background:var(--bg);color:var(--text)}
+:root:not([data-theme=night])[data-theme] .shell :is(.sidebar,.central-area,.input-card,.history-card,.portal-frame,.coverage-card,.chat,.reader,.paper,.atlas,.menu,.messages p,.lecture-textarea){background-color:var(--panel);color:var(--text);border-color:var(--border)}
+:root:not([data-theme=night])[data-theme] .shell :is(button,select,input,.panelhead,.sidebar-header,.input-bottom-bar,.portal-status-pill,.messages p.mine){background-color:var(--panel-alt);color:var(--text);border-color:var(--border)}
+:root:not([data-theme=night])[data-theme] .shell :is(h1,h2,h3,strong,.card-title,.coverage-label,.empty-title,.portal-empty-title){color:var(--text)}
+:root:not([data-theme=night])[data-theme] .shell :is(.area-subtitle,.workspace p,.empty-desc,.portal-empty-desc,.input-metrics,small){color:var(--muted)}
+:root:not([data-theme=night])[data-theme] .shell :is(.submit-btn,button.active){background:var(--accent);color:white}
+:root:not([data-theme=night])[data-theme] .shell .connected{color:#22683c!important}
+.providers select{max-width:100%}
