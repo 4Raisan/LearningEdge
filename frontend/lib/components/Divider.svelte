@@ -1,0 +1,7 @@
+<script lang="ts">
+ let {label,vertical=false,extent,adjust}:{label:string,vertical?:boolean,extent?:number,adjust:(fraction:number)=>void}=$props();
+ let last=0;
+ function move(e:PointerEvent){const el=e.currentTarget as HTMLElement;if(!el.hasPointerCapture(e.pointerId))return;const now=vertical?e.clientY:e.clientX;const size=el.parentElement!.getBoundingClientRect();adjust((now-last)/Math.max(1,extent??(vertical?size.height:size.width)));last=now}
+</script>
+<button class:vertical class="divider" aria-label={label} title={label+" · drag or use arrow keys"} onpointerdown={e=>{last=vertical?e.clientY:e.clientX;e.currentTarget.setPointerCapture(e.pointerId)}} onpointermove={move} onkeydown={e=>{const keys=vertical?["ArrowUp","ArrowDown"]:["ArrowLeft","ArrowRight"];if(keys.includes(e.key)){e.preventDefault();adjust(e.key===keys[0]?-.02:.02)}}}></button>
+<style>.divider{align-self:stretch;position:relative;padding:0;width:10px;min-width:0;border:0;border-radius:0;background:transparent;touch-action:none;cursor:col-resize}.divider:before{content:"";position:absolute;inset:10% 4px;background:var(--border)}.divider:hover:before,.divider:focus-visible:before{background:var(--muted)}.vertical{height:10px;width:100%;cursor:row-resize}.vertical:before{inset:4px 10%}</style>
