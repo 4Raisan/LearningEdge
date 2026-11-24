@@ -54,3 +54,12 @@ pub async fn agy_models()->Result<Vec<String>,String>{
         Ok(String::from_utf8_lossy(&out.stdout).lines().filter_map(|line|line.split_once('\t').map(|(id,_)|id.trim().to_owned())).collect())
     }).await.map_err(|e|e.to_string())?
 }
+pub fn markdown(notes:&VerifiedNotes)->String {
+    let mut text=format!("# {}\n",notes.title);
+    for p in &notes.points {
+        text.push_str(&format!("\n## {}\n\n{}\n\n{}\n",p.title,p.definition,p.reasoning));
+        for detail in [&p.qualification,&p.example].into_iter().flatten(){text.push_str(&format!("\n{detail}\n"));}
+        text.push_str(&format!("\nSources · {}\n",p.source_refs.join(", ")));
+    }
+    text
+}

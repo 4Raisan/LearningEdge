@@ -16,6 +16,8 @@ async fn signed_in_codex_lecture_exports_a_video() {
     assert_eq!(result.status, "completed", "{:?} {:?}", result.error_message, result.held_reason);
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert!(learningedge_lib::kg::get_knowledge_graph(&pool).await.unwrap().concepts.is_empty());
+    let md=std::fs::read_to_string(std::path::Path::new(&result.output_dir).join("verified_notes.md")).unwrap();
+    assert!(md.contains("## ") && md.to_lowercase().contains("checksum"));
     handle.abort();
 
     let run = load_run_artifacts_bundle(&pool, &id).await.unwrap();

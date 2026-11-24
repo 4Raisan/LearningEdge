@@ -247,6 +247,7 @@ pub async fn execute_pipeline_run(
         return Ok(db::get_pipeline_run(pool, run_id).await?.unwrap());
     }
 
+    tokio::fs::write(out_dir.join("verified_notes.md"), crate::studio::markdown(&verified_notes)).await?;
     // Stage 4: Scene plan (or override plan)
     db::update_run_status(pool, run_id, "running", Some("scene_plan"), None, None, None).await?;
     let t3 = Instant::now();
@@ -374,6 +375,7 @@ pub async fn execute_pipeline_run(
         duration_ms: t5.elapsed().as_millis() as u64,
         reused: false,
     });
+
 
     let metrics = BenchmarkMetrics {
         total_duration_ms: overall_start.elapsed().as_millis() as u64,
