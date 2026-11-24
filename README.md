@@ -26,15 +26,23 @@ Start with local processing and let users add separate OpenAI and Gemini API key
 ## Run Lecture to Video
 
 1. Open LearningEdge and select **Lecture to Video**.
-2. Paste your lecture text and select **Generate video**. The app groups related ideas, extracts the concepts and theories, and writes an explainer in its own words.
+2. Paste your lecture text, choose Brief, Standard, or Deep under the input, and select **Generate video**. The app groups related ideas, extracts the concepts and theories, and writes an explainer in its own words.
 3. Watch the run status. When verification and rendering finish, play the MP4 in the Video Portal.
 
-Pasted text uses Ollama running locally with the `qwen3:4b` model, Windows narration, and FFmpeg. Install [Ollama for Windows](https://docs.ollama.com/windows), start it, and run `ollama pull qwen3:4b` once. Runs use the downloaded model and need no API key.
+The default note and video settings use Ollama running locally with the `qwen3:4b` model, Windows narration, and FFmpeg. Install [Ollama for Windows](https://docs.ollama.com/windows), start it, and run `ollama pull qwen3:4b` once. Runs use the downloaded model and need no API key.
 
 ## Subscription-backed video authoring
 
-- In **Providers & Presets**, select **Use signed-in Codex**, then submit the lecture. The desktop worker runs Codex CLI with ChatGPT sign-in for concept extraction, outline review and scene coverage. These stages send the lecture to OpenAI. Install Codex CLI and run `codex login` first.
+- In **Providers**, sign in to Codex, check available models, and choose a model and thinking level separately for notes, video, or knowledge chat. The desktop worker runs Codex CLI with ChatGPT sign-in for concept extraction, outline review and scene coverage. These stages send the lecture to OpenAI. Install Codex CLI and run `codex login` first.
 - For **Antigravity Gemini 4 Hydrogen Low**, run `python scripts/hydrogen-video.py "lecture.txt"` directly in the project directory with Antigravity CLI signed in and the LearningEdge build dependencies installed. This sends the text to Google, checks the script against the source and passes it to the local renderer. The command prints the exported MP4 path. Google supports direct CLI scripting on consumer plans and excludes embedding that CLI in third-party apps. [Antigravity FAQ](https://antigravity.google/docs/faq)
+
+## Notes and provider connections
+
+Choose a discovered model or type a model ID for its provider. Model discovery lists the provider catalog. The selected account and model determine access at generation time. Drag pane dividers or focus one and use the arrow keys to resize. The workspace theme and exported video palette are independent. Exports support landscape (1280 × 720) and portrait (720 × 1280).
+
+**Graph** applies to the current lecture. Verified notes are also saved as `verified_notes.md` in the run folder. Select a node to read its linked lecture notes, open the Markdown file, or expand the reader. Knowledge chat history stays in the local desktop profile.
+
+The **Local AI & hosted API** card accepts installed Ollama models and OpenAI-compatible chat-completions endpoints. Enter the API base URL, model ID, and key. LearningEdge stores keys in the OS credential store. Verify each model and thinking setting before selecting it for notes, video, or chat. Verification sends a short synthetic request.
 
 ## Repository layout
 
