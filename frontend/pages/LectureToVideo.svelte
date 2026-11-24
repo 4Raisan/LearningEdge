@@ -1,5 +1,12 @@
 <script lang="ts">
-  let {settings=$bindable()}:{settings:import("../lib/studio").Preferences}=$props();
+  import Divider from "../lib/components/Divider.svelte";
+  import ModelPicker from "../lib/components/ModelPicker.svelte";
+  import {savedSize,saveSize} from "../lib/layout";
+  let collapsed=$state(localStorage.getItem("recents-collapsed")==="true"), recentWidth=$state(savedSize("recents",.14,.1,.25)), portalWidth=$state(savedSize("portal",.38,.25,.48));
+  $effect(()=>{saveSize("recents",recentWidth);saveSize("portal",portalWidth);localStorage.setItem("recents-collapsed",String(collapsed))});
+  export function resetLayout(){collapsed=false;recentWidth=.14;portalWidth=.38}
+
+  let portrait=$state(false), videoTheme=$state("night");
   import { invokeTauri, isTauriRuntime, resolveVideoUrl, type RunArtifactsBundle } from "../lib/tauriApi";
   interface LectureItem {
     id: string;
@@ -25,7 +32,9 @@
   let selectedHistoryId = $state<string | null>(null);
 
   // Input state
-  let { useCodex = $bindable(false) }: { useCodex?: boolean } = $props();
+  let {settings=$bindable()}:{settings:import("../lib/studio").Preferences}=$props();
+  let autoGraph=$state(true);
+  let depth=$state<import("../lib/studio").Depth>("standard");
   let lectureText = $state("");
 
   // Video generation portal state
@@ -43,6 +52,7 @@
     verify_notes: "Checking concepts against the lecture",
     scene_plan: "Building the explainer scenes",
     coverage_check: "Checking concept coverage",
+    verify_export: "Verifying rendered explanations",
     narration_and_render: "Generating narration and motion graphics",
   };
 
@@ -69,7 +79,7 @@
   async function trackVideo(id: string, content: string) {
     try {
       if (!isTauriRuntime()) throw new Error("Open LearningEdge desktop to generate a video.");
-      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content, useCodex });
+      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content, settings: { notes:settings.notes, video:settings.video, depth, auto_graph:autoGraph, portrait, video_theme:videoTheme } });
       while (true) {
         const { run, video_manifest, coverage_report, verified_notes } = await invokeTauri<RunArtifactsBundle>("get_run_artifacts", { runId: run_id });
         updateItem(id, {
@@ -214,11 +224,11 @@
   }
 </script>
 
-<div class="lecture-screen">
+<div class="lecture-screen" class:collapsed style:--recent={collapsed?"44px":recentWidth*100+"%"} style:--portal={portalWidth*100+"%"}>
   <!-- 1. LEFT SIDEBAR: Recents -->
   <aside class="sidebar" aria-label="Recents">
     <div class="sidebar-header">
-      <div class="title-with-count">
+      <button class="fold" aria-label={collapsed?"Expand recents":"Collapse recents"} title={collapsed?"Expand recents":"Collapse recents"} onclick={()=>collapsed=!collapsed}>{collapsed?"›":"‹"}</button><div class="title-with-count">
         <h2>Recents</h2>
         <span class="count-pill">{history.length}</span>
       </div>
@@ -232,7 +242,7 @@
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        <span>New</span>
+        <span class="sr-only">New lecture</span>
       </button>
     </div>
 
@@ -363,7 +373,7 @@
   </aside>
 
   <!-- 2. CENTRAL AREA: Lecture Text Input -->
-  <section class="central-area" aria-label="Lecture Content Input">
+  <Divider label="Resize recents" adjust={n=>{if(!collapsed)recentWidth=Math.max(.1,Math.min(.25,recentWidth+n))}}/><section class="central-area" aria-label="Lecture Content Input">
     <div class="area-header">
       <div>
         <h2>Lecture Input</h2>
@@ -384,24 +394,16 @@
       ></textarea>
 
       <div class="input-bottom-bar">
-        <div class="input-metrics">
+        <div class="input-metrics">{#if lectureText.length}<button class="action-btn-secondary" title="Clear lecture input" aria-label="Clear lecture input" onclick={()=>{lectureText="";selectedHistoryId=null}}>×</button>{/if}
           <span class="metric-item"><strong>{wordCount}</strong> words</span>
           <span class="metric-divider">•</span>
           <span class="metric-item"><strong>{charCount}</strong> characters</span>
           <span class="metric-hint">Press <strong>Enter</strong> to submit · <strong>Shift+Enter</strong> for newline</span>
         </div>
 
+        <div class="render-options"><label>Ratio <select bind:value={portrait}><option value={false}>16:9</option><option value={true}>9:16</option></select></label><label>Video theme <select bind:value={videoTheme}><option value="night">Night</option><option value="light">Light</option><option value="forest">Forest</option></select></label><label class="depth">Note depth <select bind:value={depth}><option value="brief">Brief</option><option value="standard">Standard</option><option value="deep">Deep</option></select></label></div>
         <div class="input-actions">
-          <label><input type="checkbox" bind:checked={useCodex} /> Use signed-in Codex for this lecture (cloud)</label>
-          {#if lectureText.length > 0}
-            <button
-              class="action-btn-secondary"
-              onclick={() => { lectureText = ""; selectedHistoryId = null; }}
-            >
-              Clear
-            </button>
-          {/if}
-
+          <ModelPicker label="Lecture video" bind:choice={settings.video}/>
           <button
             class="submit-btn"
             disabled={!lectureText.trim() || isGenerating}
@@ -412,12 +414,13 @@
             </svg>
             <span>Generate video</span>
           </button>
+          <label title="Automatically update your knowledge graph after generation"><input type="checkbox" bind:checked={autoGraph}/> Knowledge graph</label>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="portal-area" aria-label="Video output">
+  <Divider label="Resize video portal" adjust={n=>portalWidth=Math.max(.25,Math.min(.48,portalWidth-n))}/><section class="portal-area" aria-label="Video output">
     <div class="area-header">
       <div>
         <h2>Video Portal</h2>
@@ -451,26 +454,25 @@
     {#if current?.error}
       <p class="generation-error" role="alert">{current.error}</p>
     {/if}
-    {#if current}
-      <div class="coverage-card">
-        <span class="coverage-label">{current.exportedIds ? "Video" : "Script"} concept coverage</span>
-        {#if current.coverage && points.length && (current.coverage.passed || gaps.length)}
-          <progress aria-label="Required concepts covered" value={covered} max={points.length}></progress>
-          <span>{covered}/{points.length} covered · {gaps.length} missed or incomplete · {Math.floor(100 * covered / points.length)}%</span>
-          {#if gaps.length}
-            <ul>{#each gaps as point}<li>{point.title}</li>{/each}</ul>
-          {/if}
-        {:else}
-          <span>{current.coverage || current.status === "held_for_review" ? "Coverage needs review" : "Awaiting concept verification"}</span>
-        {/if}
-      </div>
-    {/if}
     {#if current?.durationMs}
       <p class="area-subtitle">Video length · {(current.durationMs / 1000).toFixed(1)} seconds</p>
     {/if}
     {#if current?.videoPath}
       <p class="area-subtitle output-path">Saved to {current.videoPath}</p>
     {/if}
+    <div class="coverage-card">
+        <span class="coverage-label">{current?.status === "completed" ? "Verified video coverage" : current?.stage === "verify_export" ? "Verifying video coverage" : current?.coverage ? "Script coverage" : "Concept coverage"}</span>
+        {#if current?.coverage && points.length && (current.coverage.passed || gaps.length)}
+          <progress aria-label="Required concepts covered" value={covered} max={points.length}></progress>
+          <span>{covered}/{points.length} covered · {gaps.length} missed or incomplete · {Math.floor(100 * covered / points.length)}%</span>
+          {#if gaps.length}
+            <ul>{#each gaps as point}<li>{point.title}</li>{/each}</ul>
+          {/if}
+        {:else}
+          <progress aria-label="Coverage awaiting verification" value={0} max={100}></progress>
+          <span>{current?.coverage || current?.status === "held_for_review" ? "Coverage needs review" : "Awaiting concept verification"}</span>
+        {/if}
+      </div>
   </section>
 </div>
 
@@ -480,7 +482,7 @@
      ===================================================================== */
   .lecture-screen {
     display: grid;
-    grid-template-columns: 290px 1fr 390px;
+    grid-template-columns: minmax(155px, .65fr) minmax(0, 1.45fr) minmax(0, 1fr);
     gap: 20px;
     width: 100%;
     min-height: calc(100vh - 205px);
@@ -1057,7 +1059,7 @@
   /* ---------------- Responsive Styles ---------------- */
   @media (max-width: 1080px) {
     .lecture-screen {
-      grid-template-columns: 240px 1fr 340px;
+      grid-template-columns: minmax(135px,.5fr) minmax(0,1.2fr) minmax(0,1fr);
       gap: 14px;
     }
   }
@@ -1068,10 +1070,16 @@
       min-height: auto;
     }
     .sidebar {
-      max-height: 360px;
+      max-height: 200px;
     }
     .portal-frame {
       min-height: 220px;
     }
   }
+  @media(max-width:900px){.central-area{order:0}.portal-area{order:1}.sidebar{order:2}.input-card{min-height:230px}.lecture-textarea{min-height:180px}}
+  .lecture-screen > *{min-width:0}
+  .render-options,.input-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.render-options{margin:4px 0 9px;font-size:13px}.render-options small{overflow-wrap:anywhere;color:var(--muted)}.input-actions label{white-space:nowrap}.sidebar-header{gap:4px;flex-wrap:wrap}.fold{padding:2px 8px}.collapsed .sidebar :is(.title-with-count,.icon-btn,.history-content){display:none}.collapsed .sidebar-header{padding:8px 4px}.coverage-card{grid-column:1/-1;order:5;display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0;padding:8px 12px;font-size:13px}.coverage-card progress{flex:1;min-width:60px}.coverage-card ul{max-height:60px;overflow:auto}
+@media(min-width:901px){.lecture-screen{grid-template-columns:var(--recent) 10px minmax(0,1fr) 10px var(--portal);grid-template-rows:minmax(0,1fr);gap:0}.portal-frame{flex:1;min-height:0}.explainer-video{height:100%;max-height:100%;object-fit:contain}.portal-area{display:flex;flex-direction:column}.central-area,.portal-area{padding:0 4px}}
+@media(max-width:900px){.lecture-screen :global(.divider){display:none}.coverage-card{grid-column:auto}}
+.sidebar .sidebar-header{display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-start;padding:8px 6px;gap:4px}.sidebar .title-with-count{min-width:0;flex:1;gap:4px}.sidebar .sidebar-header h2{font-size:14px;overflow:hidden;text-overflow:ellipsis}.sidebar .fold,.sidebar .icon-btn{padding:4px;min-width:24px;height:28px;justify-content:center}.sr-only{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}.input-actions label{display:inline-flex;align-items:center;gap:6px;font-size:13px}.input-actions{column-gap:16px}.collapsed .sidebar .sidebar-header{justify-content:center}
 </style>
