@@ -7,6 +7,7 @@ pub mod pipeline;
 pub mod providers;
 pub mod sidecars;
 pub mod worker;
+pub mod studio;
 
 use tauri::Manager;
 
@@ -46,6 +47,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            studio::studio_models,
             commands::open_provider_usage,
             commands::run_fixture_pipeline,
             commands::run_lecture_text,
