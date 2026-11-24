@@ -1,8 +1,47 @@
 #[path = "studio_connections.rs"]
 mod connections;
 pub use connections::*;
-use serde_json::{json,Value};
-use std::{path::PathBuf,process::Command};
+use connections::{hosted_endpoint,hosted_ref};
+use crate::commands::AppState;
+use crate::models::{NoteDepth, StageProviderConfig, StageProviderKind, ThinkingLevel};
+use crate::providers::text::ConceptTextProvider;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::{path::PathBuf, process::Command};
+use tauri::State;
+
+#[derive(Deserialize)]
+pub struct Choice {
+    pub provider: StageProviderKind,
+    pub model: String,
+    pub thinking: ThinkingLevel,
+    pub endpoint: Option<String>,
+}
+
+impl Choice {
+    pub fn config(self) -> Result<StageProviderConfig, String> {
+        if !matches!(
+            self.provider,
+            StageProviderKind::Ollama | StageProviderKind::CodexCli | StageProviderKind::OpenAi
+        ) || self.model.is_empty()
+            || !self
+                .model
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b"-_.:/".contains(&c))
+        {
+            return Err("Select a connected desktop model.".into());
+        }
+        let endpoint = if self.provider == StageProviderKind::OpenAi {Some(hosted_endpoint(self.endpoint.as_deref().ok_or("Enter an API endpoint")?)?)} else {None};
+        Ok(StageProviderConfig {
+            provider: self.provider,
+            model: self.model,
+            thinking: self.thinking,
+            credential_ref: endpoint.as_deref().map(hosted_ref),
+            base_url: endpoint,
+        })
+    }
+}
+
 #[tauri::command]
 pub async fn studio_models() -> Result<Value, String> {
     let home = PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default());
