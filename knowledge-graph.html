@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LearningEdge Architecture — Architecture & Dependency Explorer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: #000000;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #graph-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      background-color: #000000;
+    }
+
+    #graph-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* Glassmorphism common */
+    .glass-panel {
+      background: #071225e6; /* #071225 with opacity */
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(100, 116, 139, 0.22);
+      border-radius: 12px;
+      box-shadow: 0 20px 40px rgba(3, 11, 27, 0.85), 0 0 1px rgba(255, 255, 255, 0.15);
+      position: absolute;
+      z-index: 10;
+      pointer-events: auto;
+    }
+
+    /* Left Sidebar: Explorer & Inspector */
+    #left-panel {
+      top: 20px;
+      left: 20px;
+      width: 380px;
+      max-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    }
+
+    #left-panel::-webkit-scrollbar {
+      width: 4px;
+    }
+    #left-panel::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 12px;
+    }
+
+    .brand-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #38bdf8;
+      font-size: 20px;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #ffffff;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 1px;
+    }
+
+    .mode-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.35);
+      color: #facc15;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mode-pill:hover {
+      background: rgba(234, 179, 8, 0.2);
+    }
+
+    .search-box {
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background: #030B1B;
+      border: 1px solid #17243A;
+      color: #FFFFFF;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: #05EEED;
+      box-shadow: 0 0 0 2px rgba(5, 238, 237, 0.25);
+    }
+
+    .search-input::placeholder {
+      color: #64748B;
+    }
+
+    /* Category filter pills */
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .filter-pill {
+      background: #17243A;
+      border: 1px solid rgba(100, 116, 139, 0.3);
+      color: #94a3b8;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .filter-pill:hover {
+      background: rgba(27, 110, 234, 0.4);
+      color: #FFFFFF;
+      border-color: rgba(5, 238, 237, 0.4);
+    }
+
+    .filter-pill.active {
+      background: #1B6EEA;
+      border-color: #05EEED;
+      color: #FFFFFF;
+      box-shadow: 0 0 12px rgba(27, 110, 234, 0.5);
+    }
+
+    /* Inspector Card */
+    .inspector-card {
+      background: rgba(23, 36, 58, 0.7);
+      border: 1px solid rgba(100, 116, 139, 0.25);
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .inspector-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #05EEED;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .inspector-desc {
+      font-size: 11.5px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+
+    .node-details {
+      margin-top: 4px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+
+    .detail-label {
+      color: #64748b;
+    }
+
+    .detail-value {
+      color: #e2e8f0;
+      font-family: monospace;
+      font-weight: 600;
+    }
+
+    .deps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 140px;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+
+    .dep-item {
+      font-size: 10.5px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(30, 41, 59, 0.5);
+      border-left: 3px solid #38bdf8;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .status-summary {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      line-height: 1.4;
+    }
+
+    /* Right Sidebar: Graph Settings */
+    #right-panel {
+      top: 20px;
+      right: 20px;
+      width: 290px;
+      max-height: calc(100vh - 40px);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: -0.2px;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+
+    .setting-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+    }
+
+    .setting-group:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: #cbd5e1;
+    }
+
+    .setting-slider {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: rgba(51, 65, 85, 0.8);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      box-shadow: 0 0 6px #38bdf8;
+      transition: transform 0.1s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    input[type="checkbox"] {
+      accent-color: #38bdf8;
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+    }
+
+    select.setting-select {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .action-btn {
+      width: 100%;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .action-btn:hover {
+      background: rgba(51, 65, 85, 0.8);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+    }
+
+    /* Legend items */
+    .legend-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .legend-pill {
+      width: 14px;
+      height: 6px;
+      border-radius: 3px;
+    }
+
+    /* Node hover tooltip */
+    #node-tooltip {
+      position: absolute;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #f8fafc;
+      pointer-events: none;
+      z-index: 20;
+      display: none;
+      transform: translate(-50%, -130%);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen WebGL/Canvas Graph -->
+  <canvas id="graph-canvas"></canvas>
+
+  <!-- Left Sidebar (Explorer & Inspector) -->
+  <aside id="left-panel" class="glass-panel">
+    <div class="brand-header">
+      <div class="brand-info">
+        <div class="brand-icon">
+          <!-- Snowflake / Galaxy SVG -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="2" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">LearningEdge Architecture</h1>
+          <p class="brand-subtitle">Architecture & Dependency Explorer</p>
+        </div>
+      </div>
+      <button class="mode-pill" id="view-mode-btn" title="Toggle Architecture Explorer">
+        Architecture <span>&rarr;</span>
+      </button>
+    </div>
+
+    <!-- Search box -->
+    <div class="search-box">
+      <input
+        type="text"
+        id="node-search"
+        class="search-input"
+        placeholder="Search node, file, route, model (Enter to focus)..."
+      />
+    </div>
+
+    <!-- Filter category pills -->
+    <div class="filter-pills" id="category-filters">
+      <button class="filter-pill active" data-cat="all">All (60)</button>
+      <button class="filter-pill" data-cat="frontend">Frontend (15)</button>
+      <button class="filter-pill" data-cat="auth">Authentication (15)</button>
+      <button class="filter-pill" data-cat="database">Database (15)</button>
+      <button class="filter-pill" data-cat="routes">Routes / APIs (15)</button>
+    </div>
+
+    <!-- Node Inspector Card -->
+    <div class="inspector-card" id="inspector-card">
+      <div class="inspector-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span>Node Inspector</span>
+      </div>
+      <p class="inspector-desc" id="inspector-desc">
+        Click on any node in the interactive graph to analyze its connections, dependencies, route mappings, and impact blast radius.
+      </p>
+      <div id="inspector-details" class="node-details" style="display: none;">
+        <!-- Injected dynamically on click -->
+      </div>
+    </div>
+
+    <div class="status-summary" id="graph-status-text">
+      Showing 60 of 60 nodes &bull; 60 interconnected architectural entities
+    </div>
+  </aside>
+
+  <!-- Right Sidebar (Graph Settings & Legend) -->
+  <aside id="right-panel" class="glass-panel">
+    <div class="panel-header">
+      <span>Graph Settings</span>
+      <span style="cursor: pointer; font-size: 16px; color: #64748b;">&minus;</span>
+    </div>
+
+    <!-- Physics & Orbit -->
+    <div class="setting-group">
+      <div class="section-title">Physics & Orbit</div>
+      <label class="setting-row" style="cursor: pointer;">
+        <span>Live physics & orbit</span>
+        <input type="checkbox" id="toggle-orbit" checked />
+      </label>
+      <div class="setting-row">
+        <span>Edge labels</span>
+        <select class="setting-select" id="edge-labels-select">
+          <option value="none">None</option>
+          <option value="light" selected>Light</option>
+          <option value="full">Full</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Scale & Contrast -->
+    <div class="setting-group">
+      <div class="section-title">Scale & Contrast</div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Node size</span>
+          <span id="node-size-val">100%</span>
+        </div>
+        <input type="range" id="node-size-slider" min="40" max="200" value="100" />
+      </div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Label size</span>
+          <span id="label-size-val">100%</span>
+        </div>
+        <input type="range" id="label-size-slider" min="50" max="180" value="100" />
+      </div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Edge opacity</span>
+          <span id="edge-opacity-val">18%</span>
+        </div>
+        <input type="range" id="edge-opacity-slider" min="5" max="80" value="18" />
+      </div>
+    </div>
+
+    <!-- Concentric Layout & Spacing -->
+    <div class="setting-group">
+      <div class="section-title">Concentric Layout & Spacing</div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Ring spacing</span>
+          <span id="ring-spacing-val">120 px</span>
+        </div>
+        <input type="range" id="ring-spacing-slider" min="60" max="220" value="120" />
+      </div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Outer shell</span>
+          <span id="outer-shell-val">0</span>
+        </div>
+        <input type="range" id="outer-shell-slider" min="0" max="100" value="0" />
+      </div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Physics spring</span>
+          <span id="spring-val">100%</span>
+        </div>
+        <input type="range" id="spring-slider" min="20" max="250" value="100" />
+      </div>
+      <div class="setting-slider">
+        <div class="slider-header">
+          <span>Orbit speed</span>
+          <span id="orbit-speed-val">100%</span>
+        </div>
+        <input type="range" id="orbit-speed-slider" min="0" max="300" value="100" />
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="setting-group">
+      <button class="action-btn" id="fit-graph-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+        Fit graph
+      </button>
+      <button class="action-btn" id="export-png-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Download full diagram PNG
+      </button>
+    </div>
+
+    <!-- Legend / More settings -->
+    <div class="setting-group">
+      <div class="section-title">Color Palette Legend</div>
+      <div class="legend-list">
+        <div class="legend-item">
+          <div class="legend-pill" style="background: #F6D606; box-shadow: 0 0 8px #F6D606;"></div>
+          <span>Database Tables (#F6D606)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-pill" style="background: #05EC88; box-shadow: 0 0 8px #05EC88;"></div>
+          <span>Routes / APIs (#05EC88)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #05EEED; box-shadow: 0 0 8px #05EEED;"></div>
+          <span>Interactive Views (#05EEED)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #1B6EEA; box-shadow: 0 0 8px #1B6EEA;"></div>
+          <span>App Shell & Navigation (#1B6EEA)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #8452EA; box-shadow: 0 0 8px #8452EA;"></div>
+          <span>JWT & Security (#8452EA)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #F15A07; box-shadow: 0 0 8px #F15A07;"></div>
+          <span>Inputs & Recovery (#F15A07)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #EF0C25; box-shadow: 0 0 8px #EF0C25;"></div>
+          <span>Guards & Errors (#EF0C25)</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Node Hover Tooltip -->
+  <div id="node-tooltip"></div>
+
+  <script>
+    /**
+     * LearningEdge Knowledge Graph Engine
+     * Architecture & Dependency Explorer
+     */
+
+    function hexToRgba(hex, alpha = 1) {
+      const c = hex.replace("#", "");
+      const r = parseInt(c.substring(0, 2), 16);
+      const g = parseInt(c.substring(2, 4), 16);
+      const b = parseInt(c.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    // Master Palette definition
+    const PALETTE = {
+      yellow: "#F6D606",
+      red: "#EF0C25",
+      orange: "#F15A07",
+      purple: "#8452EA",
+      blue: "#1B6EEA",
+      cyan: "#05EEED",
+      green: "#05EC88",
+      darkBg: "#030B1B",
+      midNavy: "#071225",
+      slatePanel: "#17243A",
+      pureWhite: "#FFFFFF",
+      mutedSlate: "#64748B",
+    };
+
+    // Color definitions matching architectural reference
+    const COLORS = {
+      auth: { main: "#8452EA", glow: "rgba(132, 82, 234, 0.45)", text: "#fdf2f8" },
+      database: { main: "#F6D606", glow: "rgba(246, 214, 6, 0.45)", text: "#fef9c3" },
+      routes: { main: "#05EC88", glow: "rgba(5, 236, 136, 0.45)", text: "#ecfdf5" },
+      frontend: { main: "#05EEED", glow: "rgba(5, 238, 237, 0.45)", text: "#f0f9ff" },
+      edgeDefault: "rgba(100, 116, 139, 0.22)",
+      edgeActive: "#05EEED",
+    };
+
+    // Node Categories & Specs (Total: 60 interconnected architectural nodes)
+    const nodes = [];
+    const edges = [];
+    const nodeMap = new Map();
+
+    function createDataset() {
+      // 1. FRONTEND NODES (15 nodes)
+      const frontendList = [
+        { name: "Home Page", file: "frontend/pages/HomePage.svelte", desc: "Landing page and application introduction interface.", color: "#05EEED" },
+        { name: "Dashboard", file: "frontend/pages/Dashboard.svelte", desc: "Central analytics, recent projects, and overview view.", color: "#05EEED" },
+        { name: "Navigation Bar", file: "frontend/components/Navbar.svelte", desc: "Top persistent navigation bar with user profile actions.", color: "#1B6EEA" },
+        { name: "Sidebar", file: "frontend/components/Sidebar.svelte", desc: "Collapsible left navigation menu for quick workspace switching.", color: "#1B6EEA" },
+        { name: "User Profile", file: "frontend/pages/UserProfile.svelte", desc: "User settings, credentials, avatar, and personal preferences.", color: "#1B6EEA" },
+        { name: "Learning Workspace", file: "frontend/pages/LearningWorkspace.svelte", desc: "Interactive workspace for managing lectures, files, and scenes.", color: "#05EEED" },
+        { name: "Text Input Component", file: "frontend/components/TextInput.svelte", desc: "Markdown and plain text lecture transcript input field.", color: "#F15A07" },
+        { name: "Image Upload Component", file: "frontend/components/ImageUpload.svelte", desc: "File dropper and uploader for slides, diagrams, and figures.", color: "#F15A07" },
+        { name: "Video Generation Interface", file: "frontend/components/VideoGenerator.svelte", desc: "Prompt controls, model selector, voice, and render triggers.", color: "#05EEED" },
+        { name: "Video Preview Player", file: "frontend/components/VideoPreview.svelte", desc: "Interactive HTML5/Canvas video player with synced captions.", color: "#05EEED" },
+        { name: "Progress Indicator", file: "frontend/components/ProgressIndicator.svelte", desc: "Real-time pipeline stage progress and rendering spinner.", color: "#F15A07" },
+        { name: "Settings Page", file: "frontend/pages/SettingsPage.svelte", desc: "Application configuration, API keys, and voice presets.", color: "#1B6EEA" },
+        { name: "Responsive Layout", file: "frontend/layouts/AppShell.svelte", desc: "Adaptive container shell handling desktop and tablet screen sizes.", color: "#1B6EEA" },
+        { name: "Notification Component", file: "frontend/components/NotificationToast.svelte", desc: "Toast notifications for system alerts, success, and background tasks.", color: "#05EC88" },
+        { name: "Error Messages", file: "frontend/components/ErrorMessage.svelte", desc: "User-friendly validation and network error display banners.", color: "#EF0C25" }
+      ];
+
+      // 2. AUTHENTICATION NODES (15 nodes)
+      const authList = [
+        { name: "User Registration", file: "src/auth/register.rs", desc: "Creates user accounts and triggers initial validation.", color: "#F15A07" },
+        { name: "User Login", file: "src/auth/login.rs", desc: "Validates credentials and issues session/access tokens.", color: "#EF0C25" },
+        { name: "User Logout", file: "src/auth/logout.rs", desc: "Terminates sessions and invalidates refresh tokens.", color: "#EF0C25" },
+        { name: "Email Validation", file: "src/auth/validators.rs", desc: "Ensures valid email syntax and ownership verification.", color: "#F15A07" },
+        { name: "Password Hashing", file: "src/auth/hash.rs", desc: "Argon2 / bcrypt cryptographic password hashing engine.", color: "#EF0C25" },
+        { name: "Forgot Password", file: "src/auth/recovery.rs", desc: "Generates secure password reset tokens and email dispatch.", color: "#F15A07" },
+        { name: "Password Reset", file: "src/auth/reset.rs", desc: "Verifies reset tokens and updates password hash.", color: "#F15A07" },
+        { name: "Session Management", file: "src/auth/session.rs", desc: "Tracks active user sessions, device tokens, and expiry.", color: "#8452EA" },
+        { name: "JWT Authentication", file: "src/auth/jwt.rs", desc: "Issues, signs, and verifies JSON Web Tokens (RS256).", color: "#8452EA" },
+        { name: "Role-Based Access Control", file: "src/auth/rbac.rs", desc: "Enforces Admin, Editor, and Viewer permission levels.", color: "#8452EA" },
+        { name: "User Authorization", file: "src/auth/authorize.rs", desc: "Validates user permissions on specific resources.", color: "#8452EA" },
+        { name: "Protected Routes", file: "src/auth/guards.rs", desc: "Restricts route execution to authenticated principals.", color: "#EF0C25" },
+        { name: "Token Verification", file: "src/auth/tokens.rs", desc: "Inspects token signatures, claims, and revocation status.", color: "#8452EA" },
+        { name: "Account Management", file: "src/auth/account.rs", desc: "Handles profile updates, password changes, and account deletion.", color: "#8452EA" },
+        { name: "Authentication Middleware", file: "src/auth/middleware.rs", desc: "Intercepts incoming HTTP/IPC requests to authenticate users.", color: "#EF0C25" }
+      ];
+
+      // 3. DATABASE NODES (15 nodes)
+      const dbList = [
+        { name: "Users Table", file: "db/schema/users.sql", desc: "Core user accounts, UUIDs, email, and creation timestamps.", color: "#F6D606" },
+        { name: "User Profiles Table", file: "db/schema/profiles.sql", desc: "Profile details, display names, avatars, and bios.", color: "#F6D606" },
+        { name: "Authentication Table", file: "db/schema/auth.sql", desc: "Hashed passwords, salt, two-factor secrets, and OAuth providers.", color: "#F6D606" },
+        { name: "Learning Materials Table", file: "db/schema/materials.sql", desc: "Extracted concepts, lecture notes, transcripts, and citations.", color: "#F6D606" },
+        { name: "Uploaded Files Table", file: "db/schema/uploads.sql", desc: "Stored user files, lecture slides, audio clips, and PDFs.", color: "#F6D606" },
+        { name: "Generated Videos Table", file: "db/schema/videos.sql", desc: "Final rendered explainer videos, file paths, and durations.", color: "#F6D606" },
+        { name: "Video History Table", file: "db/schema/video_history.sql", desc: "Audit logs of past video renderings, iterations, and edits.", color: "#F6D606" },
+        { name: "User Preferences Table", file: "db/schema/preferences.sql", desc: "Preferred AI voices, thinking levels, note depths, and themes.", color: "#F6D606" },
+        { name: "Notifications Table", file: "db/schema/notifications.sql", desc: "Queued and delivered in-app alerts and notifications.", color: "#F6D606" },
+        { name: "Learning Progress Table", file: "db/schema/progress.sql", desc: "Tracked completion metrics, concept mastery, and study notes.", color: "#F6D606" },
+        { name: "Session Table", file: "db/schema/sessions.sql", desc: "Persisted login sessions, refresh tokens, and device IDs.", color: "#F6D606" },
+        { name: "Activity Logs Table", file: "db/schema/activity_logs.sql", desc: "System audit logs, user actions, errors, and logins.", color: "#F6D606" },
+        { name: "File Metadata", file: "db/schema/file_metadata.sql", desc: "MIME types, dimensions, durations, and byte sizes of assets.", color: "#F6D606" },
+        { name: "Database Relationships", file: "db/schema/foreign_keys.sql", desc: "Foreign key constraints, cascade rules, and entity mappings.", color: "#F6D606" },
+        { name: "Data Validation", file: "db/schema/constraints.sql", desc: "Check constraints, non-null guards, and unique indexes.", color: "#F6D606" }
+      ];
+
+      // 4. ROUTES / API NODES (15 nodes)
+      const routesList = [
+        { name: "/ – Home Route", file: "src/routes/home.rs", desc: "Root index route serving main landing view.", color: "#05EC88" },
+        { name: "/dashboard – Dashboard Route", file: "src/routes/dashboard.rs", desc: "Dashboard view handler serving user projects and metrics.", color: "#05EC88" },
+        { name: "/login – Login Route", file: "src/routes/login.rs", desc: "Authentication route rendering user login portal.", color: "#05EC88" },
+        { name: "/register – Registration Route", file: "src/routes/register.rs", desc: "Account creation route handling onboarding.", color: "#05EC88" },
+        { name: "/profile – User Profile Route", file: "src/routes/profile.rs", desc: "User profile management and avatar settings route.", color: "#05EC88" },
+        { name: "/settings – Settings Route", file: "src/routes/settings.rs", desc: "Settings route for API keys and voice presets.", color: "#05EC88" },
+        { name: "/upload – File Upload Route", file: "src/routes/upload.rs", desc: "Handles document, slide, and lecture audio ingestion.", color: "#05EC88" },
+        { name: "/generate – Video Generation Route", file: "src/routes/generate.rs", desc: "Initiates Apalis pipeline for script and video synthesis.", color: "#05EC88" },
+        { name: "/videos – Generated Videos Route", file: "src/routes/videos.rs", desc: "Lists all generated videos with pagination and search.", color: "#05EC88" },
+        { name: "/videos/:id – Video Details Route", file: "src/routes/video_details.rs", desc: "Serves playback stream, captions, and source timestamps.", color: "#05EC88" },
+        { name: "/history – Generation History Route", file: "src/routes/history.rs", desc: "Audit trail of pipeline runs and rendering metrics.", color: "#05EC88" },
+        { name: "/api/auth – Authentication API", file: "src/api/auth.rs", desc: "REST endpoint for login, register, token refresh, and logout.", color: "#05EC88" },
+        { name: "/api/upload – Upload API", file: "src/api/upload.rs", desc: "Multipart upload endpoint storing assets and slide images.", color: "#05EC88" },
+        { name: "/api/generate – Video Generation API", file: "src/api/generate.rs", desc: "Triggers background worker to draft notes and render video.", color: "#05EC88" },
+        { name: "/api/users – User Management API", file: "src/api/users.rs", desc: "CRUD REST endpoints for user preferences and profile data.", color: "#05EC88" }
+      ];
+
+      let id = 1;
+
+      // Instantiate Auth Nodes (Ring 0 - Center Inner Core)
+      const authNodes = authList.map((item, i) => {
+        const angle = (i / authList.length) * Math.PI * 2;
+        const node = {
+          id: `auth-${id++}`,
+          label: item.name,
+          category: "auth",
+          color: item.color,
+          type: "circle",
+          radius: 7.5,
+          ring: 0,
+          angle: angle,
+          distance: 85 + (i % 3) * 22,
+          orbitSpeed: 0.00035 * (i % 2 === 0 ? 1 : -1),
+          file: item.file,
+          desc: item.desc,
+        };
+        nodes.push(node);
+        return node;
+      });
+
+      // Instantiate Database Nodes (Ring 1 - Concentric Oval Ring of Yellow Pills)
+      const dbNodes = dbList.map((item, i) => {
+        const angle = (i / dbList.length) * Math.PI * 2 + 0.15;
+        const node = {
+          id: `db-${id++}`,
+          label: item.name,
+          category: "database",
+          color: item.color,
+          type: "pill",
+          width: 76,
+          height: 15,
+          ring: 1,
+          angle: angle,
+          distance: 230 + (i % 3) * 16,
+          orbitSpeed: 0.00028,
+          file: item.file,
+          desc: item.desc,
+        };
+        nodes.push(node);
+        return node;
+      });
+
+      // Instantiate Routes / API Nodes (Ring 2 - Middle Orbit of Teal Pills)
+      const routeNodes = routesList.map((item, i) => {
+        const angle = (i / routesList.length) * Math.PI * 2 + 0.35;
+        const node = {
+          id: `route-${id++}`,
+          label: item.name,
+          category: "routes",
+          color: item.color,
+          type: "pill",
+          width: 86,
+          height: 15,
+          ring: 2,
+          angle: angle,
+          distance: 395 + (i % 3) * 22,
+          orbitSpeed: -0.00022,
+          file: item.file,
+          desc: item.desc,
+        };
+        nodes.push(node);
+        return node;
+      });
+
+      // Instantiate Frontend Nodes (Ring 3 - Outer Orbit of Cyan Dots)
+      const frontendNodes = frontendList.map((item, i) => {
+        const angle = (i / frontendList.length) * Math.PI * 2 + 0.55;
+        const node = {
+          id: `fe-${id++}`,
+          label: item.name,
+          category: "frontend",
+          color: item.color,
+          type: "circle",
+          radius: 7,
+          ring: 3,
+          angle: angle,
+          distance: 570 + (i % 3) * 26,
+          orbitSpeed: 0.00018,
+          file: item.file,
+          desc: item.desc,
+        };
+        nodes.push(node);
+        return node;
+      });
+
+      // Index all nodes by id & name
+      const byName = new Map();
+      nodes.forEach((n) => {
+        n.x = 0;
+        n.y = 0;
+        n.baseDistance = n.distance;
+        nodeMap.set(n.id, n);
+        byName.set(n.label, n);
+      });
+
+      function addLink(sourceName, targetName, type) {
+        const s = byName.get(sourceName);
+        const t = byName.get(targetName);
+        if (s && t) {
+          edges.push({ source: s.id, target: t.id, type });
+        }
+      }
+
+      // BUILD REALISTIC ARCHITECTURAL EDGES
+
+      // 1. Frontend Structure & Composition
+      addLink("Responsive Layout", "Navigation Bar", "contains");
+      addLink("Responsive Layout", "Sidebar", "contains");
+      addLink("Responsive Layout", "Home Page", "renders");
+      addLink("Responsive Layout", "Dashboard", "renders");
+      addLink("Responsive Layout", "Learning Workspace", "renders");
+      addLink("Responsive Layout", "User Profile", "renders");
+      addLink("Responsive Layout", "Settings Page", "renders");
+      addLink("Responsive Layout", "Notification Component", "mounts");
+      addLink("Responsive Layout", "Error Messages", "mounts");
+
+      addLink("Sidebar", "Home Page", "navigates");
+      addLink("Sidebar", "Dashboard", "navigates");
+      addLink("Sidebar", "Learning Workspace", "navigates");
+      addLink("Sidebar", "User Profile", "navigates");
+      addLink("Sidebar", "Settings Page", "navigates");
+
+      addLink("Learning Workspace", "Text Input Component", "composes");
+      addLink("Learning Workspace", "Image Upload Component", "composes");
+      addLink("Learning Workspace", "Video Generation Interface", "composes");
+      addLink("Video Generation Interface", "Progress Indicator", "observes");
+      addLink("Video Generation Interface", "Video Preview Player", "outputs_to");
+
+      // 2. Frontend to Routes
+      addLink("Home Page", "/ – Home Route", "routes_to");
+      addLink("Dashboard", "/dashboard – Dashboard Route", "routes_to");
+      addLink("Dashboard", "/videos – Generated Videos Route", "fetches");
+      addLink("Dashboard", "/history – Generation History Route", "queries");
+      addLink("User Profile", "/profile – User Profile Route", "routes_to");
+      addLink("User Profile", "/api/users – User Management API", "mutates");
+      addLink("Settings Page", "/settings – Settings Route", "routes_to");
+      addLink("Image Upload Component", "/upload – File Upload Route", "routes_to");
+      addLink("Image Upload Component", "/api/upload – Upload API", "posts_multipart");
+      addLink("Video Generation Interface", "/generate – Video Generation Route", "routes_to");
+      addLink("Video Generation Interface", "/api/generate – Video Generation API", "dispatches");
+      addLink("Video Preview Player", "/videos/:id – Video Details Route", "streams");
+
+      // 3. Routes to Authentication
+      addLink("/login – Login Route", "User Login", "delegates");
+      addLink("/register – Registration Route", "User Registration", "delegates");
+      addLink("/profile – User Profile Route", "Protected Routes", "secured_by");
+      addLink("/dashboard – Dashboard Route", "Protected Routes", "secured_by");
+      addLink("/settings – Settings Route", "Protected Routes", "secured_by");
+      addLink("/upload – File Upload Route", "Protected Routes", "secured_by");
+      addLink("/generate – Video Generation Route", "Protected Routes", "secured_by");
+      addLink("/videos – Generated Videos Route", "Protected Routes", "secured_by");
+      addLink("/videos/:id – Video Details Route", "Protected Routes", "secured_by");
+      addLink("/history – Generation History Route", "Protected Routes", "secured_by");
+
+      addLink("/api/auth – Authentication API", "JWT Authentication", "issues_tokens");
+      addLink("/api/auth – Authentication API", "Session Management", "controls_session");
+      addLink("/api/auth – Authentication API", "Token Verification", "validates_token");
+      addLink("/api/upload – Upload API", "Authentication Middleware", "checked_by");
+      addLink("/api/generate – Video Generation API", "Authentication Middleware", "checked_by");
+      addLink("/api/generate – Video Generation API", "Role-Based Access Control", "evaluates_role");
+      addLink("/api/users – User Management API", "User Authorization", "verifies_rights");
+      addLink("/api/users – User Management API", "Account Management", "invokes");
+
+      // 4. Authentication Internals
+      addLink("Protected Routes", "Authentication Middleware", "enforced_by");
+      addLink("Authentication Middleware", "JWT Authentication", "decodes_claims");
+      addLink("Authentication Middleware", "Token Verification", "verifies_signature");
+      addLink("Authentication Middleware", "User Authorization", "evaluates");
+      addLink("User Authorization", "Role-Based Access Control", "enforces");
+
+      addLink("User Registration", "Email Validation", "checks_email");
+      addLink("User Registration", "Password Hashing", "hashes_password");
+      addLink("User Login", "Password Hashing", "verifies_hash");
+      addLink("User Login", "Session Management", "creates_session");
+      addLink("User Login", "JWT Authentication", "requests_token");
+      addLink("User Logout", "Session Management", "invalidates_session");
+      addLink("Forgot Password", "Email Validation", "sends_link");
+      addLink("Forgot Password", "Password Reset", "triggers");
+      addLink("Password Reset", "Password Hashing", "rehashes");
+      addLink("Password Reset", "Token Verification", "verifies_reset_token");
+      addLink("Account Management", "User Authorization", "checks_ownership");
+
+      // 5. Authentication to Database
+      addLink("User Registration", "Users Table", "inserts_row");
+      addLink("User Registration", "User Profiles Table", "inits_profile");
+      addLink("User Registration", "Authentication Table", "stores_credentials");
+      addLink("User Login", "Users Table", "reads_user");
+      addLink("User Login", "Authentication Table", "reads_hash");
+      addLink("Session Management", "Session Table", "manages_session_records");
+      addLink("Role-Based Access Control", "Users Table", "inspects_role");
+      addLink("Account Management", "Users Table", "updates_user");
+      addLink("Account Management", "User Preferences Table", "saves_preferences");
+
+      // 6. Routes / APIs to Database
+      addLink("/api/upload – Upload API", "Uploaded Files Table", "writes_file_record");
+      addLink("/api/upload – Upload API", "File Metadata", "extracts_metadata");
+      addLink("/api/generate – Video Generation API", "Learning Materials Table", "queries_notes");
+      addLink("/api/generate – Video Generation API", "Generated Videos Table", "creates_job");
+      addLink("/api/generate – Video Generation API", "Learning Progress Table", "updates_progress");
+      addLink("/videos/:id – Video Details Route", "Generated Videos Table", "queries_video");
+      addLink("/videos/:id – Video Details Route", "Video History Table", "reads_history");
+      addLink("/history – Generation History Route", "Video History Table", "paginates");
+      addLink("/history – Generation History Route", "Activity Logs Table", "audits");
+
+      // 7. Database Entity Relationships & Integrity
+      addLink("Database Relationships", "Users Table", "maps_primary_key");
+      addLink("Users Table", "User Profiles Table", "has_one");
+      addLink("Users Table", "Authentication Table", "has_credentials");
+      addLink("Users Table", "Session Table", "has_many");
+      addLink("Users Table", "Uploaded Files Table", "owns_uploads");
+      addLink("Users Table", "Generated Videos Table", "creates_videos");
+      addLink("Users Table", "User Preferences Table", "customizes");
+      addLink("Users Table", "Notifications Table", "receives");
+      addLink("Users Table", "Learning Progress Table", "tracks");
+      addLink("Users Table", "Activity Logs Table", "generates_logs");
+
+      addLink("Uploaded Files Table", "File Metadata", "has_metadata");
+      addLink("Uploaded Files Table", "Learning Materials Table", "source_for");
+      addLink("Learning Materials Table", "Generated Videos Table", "synthesizes_into");
+      addLink("Generated Videos Table", "Video History Table", "archives_to");
+
+      addLink("Data Validation", "Users Table", "enforces_constraints");
+      addLink("Data Validation", "Authentication Table", "enforces_entropy");
+      addLink("Data Validation", "Uploaded Files Table", "enforces_mime");
+      addLink("Data Validation", "Generated Videos Table", "enforces_duration");
+
+      // Extra cross-cutting links for error handling and notifications
+      addLink("Notification Component", "Notifications Table", "displays_from");
+      addLink("Error Messages", "Activity Logs Table", "logs_to");
+      addLink("Error Messages", "Data Validation", "triggered_by");
+    }
+
+    createDataset();
+
+    // Canvas & Viewport Setup
+    const canvas = document.getElementById("graph-canvas");
+    const ctx = canvas.getContext("2d");
+
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    window.addEventListener("resize", () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      render();
+    });
+
+    // Viewport transform
+    const camera = {
+      x: width / 2,
+      y: height / 2,
+      scale: 0.85,
+      targetX: width / 2,
+      targetY: height / 2,
+      targetScale: 0.85,
+    };
+
+    // User settings
+    const settings = {
+      liveOrbit: true,
+      edgeLabels: "light",
+      nodeSize: 1.0,
+      labelSize: 1.0,
+      edgeOpacity: 0.18,
+      ringSpacing: 120,
+      outerShell: 0,
+      physicsSpring: 1.0,
+      orbitSpeed: 1.0,
+      activeFilter: "all",
+      searchQuery: "",
+      selectedNodeId: null,
+      hoveredNodeId: null,
+    };
+
+    // Initialize node positions
+    function updateNodePositions(dt = 1) {
+      const ringMultiplier = settings.ringSpacing / 120;
+      const speedMultiplier = settings.orbitSpeed;
+
+      nodes.forEach((node) => {
+        if (settings.liveOrbit && !node.isDragging) {
+          node.angle += node.orbitSpeed * speedMultiplier * dt;
+        }
+
+        let dist = node.baseDistance * ringMultiplier;
+        if (node.ring > 2) {
+          dist += settings.outerShell * 2;
+        }
+
+        // Elliptical layout matching the screenshot (wider horizontally)
+        const rx = dist * 1.15;
+        const ry = dist * 0.9;
+
+        if (!node.isDragging) {
+          node.x = Math.cos(node.angle) * rx;
+          node.y = Math.sin(node.angle) * ry;
+        }
+      });
+    }
+
+    updateNodePositions();
+
+    // RENDER LOOP
+    let lastTime = performance.now();
+
+    function render(currentTime = performance.now()) {
+      const dt = Math.min((currentTime - lastTime) / 16.66, 2);
+      lastTime = currentTime;
+
+      // Smooth camera interpolation
+      camera.x += (camera.targetX - camera.x) * 0.1;
+      camera.y += (camera.targetY - camera.y) * 0.1;
+      camera.scale += (camera.targetScale - camera.scale) * 0.1;
+
+      // Update positions
+      if (settings.liveOrbit) {
+        updateNodePositions(dt);
+      }
+
+      // Clear Canvas to pure black
+      ctx.save();
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, width, height);
+
+      // Subtle background orbital grid lines
+      ctx.translate(camera.x, camera.y);
+      ctx.scale(camera.scale, camera.scale);
+
+      drawOrbits();
+      drawEdges();
+      drawNodes();
+
+      ctx.restore();
+
+      requestAnimationFrame(render);
+    }
+
+    // Draw faint concentric orbit rings
+    function drawOrbits() {
+      const ringSpacing = settings.ringSpacing;
+      const rings = [95, 235, 400, 580];
+
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 8]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.025)";
+
+      rings.forEach((r) => {
+        const rx = r * (ringSpacing / 120) * 1.15;
+        const ry = r * (ringSpacing / 120) * 0.9;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      ctx.restore();
+    }
+
+    // Draw graph edges
+    function drawEdges() {
+      const selectedId = settings.selectedNodeId;
+      const hoveredId = settings.hoveredNodeId;
+      const activeId = hoveredId || selectedId;
+
+      ctx.save();
+
+      edges.forEach((edge) => {
+        const s = nodeMap.get(edge.source);
+        const t = nodeMap.get(edge.target);
+        if (!s || !t) return;
+
+        // Check if filtered out
+        if (settings.activeFilter !== "all") {
+          if (s.category !== settings.activeFilter && t.category !== settings.activeFilter) return;
+        }
+
+        const isConnected = activeId && (edge.source === activeId || edge.target === activeId);
+
+        if (isConnected) {
+          ctx.strokeStyle = "#05EEED";
+          ctx.lineWidth = 1.9;
+          ctx.shadowColor = "#05EEED";
+          ctx.shadowBlur = 8;
+        } else {
+          ctx.strokeStyle = `rgba(100, 116, 139, ${settings.edgeOpacity * (activeId ? 0.35 : 1)})`;
+          ctx.lineWidth = 0.75;
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+
+        // Edge labels if enabled
+        if (isConnected && settings.edgeLabels !== "none") {
+          const mx = (s.x + t.x) / 2;
+          const my = (s.y + t.y) / 2;
+          ctx.save();
+          ctx.font = "9px monospace";
+          ctx.fillStyle = "#94a3b8";
+          ctx.textAlign = "center";
+          ctx.fillText(edge.type, mx, my - 4);
+          ctx.restore();
+        }
+      });
+
+      ctx.restore();
+    }
+
+    // Draw graph nodes
+    function drawNodes() {
+      const sizeMod = settings.nodeSize;
+      const labelMod = settings.labelSize;
+      const selectedId = settings.selectedNodeId;
+      const hoveredId = settings.hoveredNodeId;
+      const activeId = hoveredId || selectedId;
+
+      // Find blast radius (connected set) if activeId is set
+      const connectedSet = new Set();
+      if (activeId) {
+        connectedSet.add(activeId);
+        edges.forEach((e) => {
+          if (e.source === activeId) connectedSet.add(e.target);
+          if (e.target === activeId) connectedSet.add(e.source);
+        });
+      }
+
+      nodes.forEach((node) => {
+        // Filter check
+        const passesCategory = settings.activeFilter === "all" || node.category === settings.activeFilter;
+        const passesSearch = !settings.searchQuery || node.label.toLowerCase().includes(settings.searchQuery.toLowerCase());
+
+        let alpha = 1.0;
+        if (!passesCategory || !passesSearch) {
+          alpha = 0.08;
+        } else if (activeId && !connectedSet.has(node.id)) {
+          alpha = 0.2;
+        }
+
+        const colorCfg = COLORS[node.category] || COLORS.services;
+        const nodeColor = node.color || colorCfg.main;
+        const isHovered = node.id === hoveredId;
+        const isSelected = node.id === selectedId;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        if (node.type === "pill") {
+          // Horizontal Capsule / Pill Node
+          const w = (node.width || 76) * sizeMod * (isHovered || isSelected ? 1.15 : 1);
+          const h = (node.height || 15) * sizeMod * (isHovered || isSelected ? 1.15 : 1);
+          const r = h / 2;
+          const x = node.x - w / 2;
+          const y = node.y - h / 2;
+
+          // Glowing luminous neon pill against pitch black
+          ctx.shadowColor = nodeColor;
+          ctx.shadowBlur = (isSelected || isHovered) ? 22 : 9;
+
+          // Body fill
+          ctx.fillStyle = nodeColor;
+          roundRect(ctx, x, y, w, h, r);
+          ctx.fill();
+
+          // Border
+          ctx.strokeStyle = isSelected ? "#FFFFFF" : "rgba(255, 255, 255, 0.45)";
+          ctx.lineWidth = isSelected ? 1.8 : 0.8;
+          ctx.stroke();
+
+          // Subtle label inside pill if large enough, or on hover
+          if (camera.scale > 1.15 || isHovered || isSelected) {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = "#030B1B";
+            ctx.font = `bold ${Math.max(8.5, 9.5 * labelMod)}px -apple-system, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const maxChars = Math.floor(w / 6.5);
+            ctx.fillText(node.label.length > maxChars ? node.label.slice(0, maxChars - 1) + ".." : node.label, node.x, node.y);
+          }
+        } else {
+          // Circle / Dot Node
+          const rad = (node.radius || 7) * sizeMod * (isHovered || isSelected ? 1.35 : 1);
+
+          // Outer halo
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, rad + (isSelected || isHovered ? 5 : 2.5), 0, Math.PI * 2);
+          ctx.fillStyle = hexToRgba(nodeColor, 0.35);
+          ctx.fill();
+
+          // Dot body with neon glow
+          ctx.shadowColor = nodeColor;
+          ctx.shadowBlur = (isSelected || isHovered) ? 22 : 10;
+
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, rad, 0, Math.PI * 2);
+          ctx.fillStyle = nodeColor;
+          ctx.fill();
+
+          ctx.strokeStyle = isSelected ? "#FFFFFF" : "rgba(255, 255, 255, 0.45)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Label outside dot if zoomed in or hovered
+          if ((camera.scale > 1.25 && node.ring < 3) || isHovered || isSelected) {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = isSelected ? "#FFFFFF" : "#E2E8F0";
+            ctx.font = `${Math.max(9, 10 * labelMod)}px -apple-system, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText(node.label, node.x, node.y + rad + 4);
+          }
+        }
+
+        ctx.restore();
+      });
+    }
+
+    function roundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    // Node hit testing
+    function getNodeAt(screenX, screenY) {
+      const worldX = (screenX - camera.x) / camera.scale;
+      const worldY = (screenY - camera.y) / camera.scale;
+      const sizeMod = settings.nodeSize;
+
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        if (n.type === "pill") {
+          const w = (n.width || 54) * sizeMod;
+          const h = (n.height || 14) * sizeMod;
+          if (
+            worldX >= n.x - w / 2 - 4 &&
+            worldX <= n.x + w / 2 + 4 &&
+            worldY >= n.y - h / 2 - 4 &&
+            worldY <= n.y + h / 2 + 4
+          ) {
+            return n;
+          }
+        } else {
+          const r = (n.radius || 6) * sizeMod + 4;
+          const dx = worldX - n.x;
+          const dy = worldY - n.y;
+          if (dx * dx + dy * dy <= r * r) {
+            return n;
+          }
+        }
+      }
+      return null;
+    }
+
+    // Interactivity: Dragging, Pan, Zoom
+    let isPanning = false;
+    let startPanX = 0;
+    let startPanY = 0;
+    let draggedNode = null;
+
+    canvas.addEventListener("mousedown", (e) => {
+      const hitNode = getNodeAt(e.clientX, e.clientY);
+      if (hitNode) {
+        draggedNode = hitNode;
+        draggedNode.isDragging = true;
+      } else {
+        isPanning = true;
+        startPanX = e.clientX - camera.targetX;
+        startPanY = e.clientY - camera.targetY;
+      }
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (draggedNode) {
+        draggedNode.x = (e.clientX - camera.x) / camera.scale;
+        draggedNode.y = (e.clientY - camera.y) / camera.scale;
+        draggedNode.distance = Math.hypot(draggedNode.x, draggedNode.y);
+        draggedNode.angle = Math.atan2(draggedNode.y, draggedNode.x);
+        return;
+      }
+
+      if (isPanning) {
+        camera.targetX = e.clientX - startPanX;
+        camera.targetY = e.clientY - startPanY;
+        return;
+      }
+
+      // Hover detection
+      const hit = getNodeAt(e.clientX, e.clientY);
+      const tooltip = document.getElementById("node-tooltip");
+
+      if (hit) {
+        settings.hoveredNodeId = hit.id;
+        canvas.style.cursor = "pointer";
+        tooltip.style.display = "block";
+        tooltip.style.left = e.clientX + "px";
+        tooltip.style.top = e.clientY + "px";
+        tooltip.innerHTML = `<strong>${hit.label}</strong> <span style="color:${hit.color || '#05EEED'}">(${hit.category})</span><br/><span style="color:#64748B; font-family:monospace; font-size:10px;">${hit.file}</span>`;
+      } else {
+        settings.hoveredNodeId = null;
+        canvas.style.cursor = "grab";
+        tooltip.style.display = "none";
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (draggedNode) {
+        draggedNode.isDragging = false;
+        draggedNode = null;
+      }
+      isPanning = false;
+    });
+
+    // Node selection on click
+    canvas.addEventListener("click", (e) => {
+      const hit = getNodeAt(e.clientX, e.clientY);
+      if (hit) {
+        selectNode(hit);
+      } else {
+        settings.selectedNodeId = null;
+        resetInspector();
+      }
+    });
+
+    // Mouse wheel zoom
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+      const mouseWorldX = (e.clientX - camera.x) / camera.scale;
+      const mouseWorldY = (e.clientY - camera.y) / camera.scale;
+
+      const newScale = Math.max(0.2, Math.min(3.5, camera.targetScale * zoomFactor));
+      camera.targetScale = newScale;
+      camera.targetX = e.clientX - mouseWorldX * newScale;
+      camera.targetY = e.clientY - mouseWorldY * newScale;
+    }, { passive: false });
+
+    // Select node & update Inspector card
+    function selectNode(node) {
+      settings.selectedNodeId = node.id;
+
+      // Find dependencies
+      const incoming = [];
+      const outgoing = [];
+      edges.forEach((e) => {
+        if (e.source === node.id) outgoing.push({ id: e.target, name: nodeMap.get(e.target)?.label || e.target, type: e.type });
+        if (e.target === node.id) incoming.push({ id: e.source, name: nodeMap.get(e.source)?.label || e.source, type: e.type });
+      });
+
+      const totalDeps = incoming.length + outgoing.length;
+
+      document.getElementById("inspector-desc").textContent = node.desc || "Architecture node selected.";
+      const detailsEl = document.getElementById("inspector-details");
+      detailsEl.style.display = "flex";
+      detailsEl.innerHTML = `
+        <div class="detail-row">
+          <span class="detail-label">Node Label</span>
+          <span class="detail-value" style="color: ${node.color || '#05EEED'}">${node.label}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Category</span>
+          <span class="detail-value">${node.category.toUpperCase()}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Source File</span>
+          <span class="detail-value" style="font-size:10px; word-break:break-all;">${node.file}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Impact Radius</span>
+          <span class="detail-value" style="color:#05EEED;">${totalDeps} direct links</span>
+        </div>
+        <div style="font-size: 11px; font-weight: 600; color: #64748B; margin-top: 6px;">Connected Dependencies:</div>
+        <div class="deps-list">
+          ${outgoing.map(d => `<div class="dep-item"><span>&rarr; ${d.name}</span><span style="color:#64748B">${d.type}</span></div>`).join("")}
+          ${incoming.map(d => `<div class="dep-item" style="border-color:#8452EA;"><span>&larr; ${d.name}</span><span style="color:#64748B">${d.type}</span></div>`).join("")}
+          ${totalDeps === 0 ? `<div style="font-size:10.5px; color:#64748B; font-style:italic;">No connected links</div>` : ""}
+        </div>
+      `;
+
+      // Smooth pan to focused node
+      camera.targetX = width / 2 - node.x * camera.scale;
+      camera.targetY = height / 2 - node.y * camera.scale;
+    }
+
+    function resetInspector() {
+      document.getElementById("inspector-desc").textContent =
+        "Click on any node in the interactive graph to analyze its file path, API routes, database models, and impact blast radius.";
+      document.getElementById("inspector-details").style.display = "none";
+    }
+
+    // UI Controls Wiring
+    // 1. Category Filter Pills
+    document.querySelectorAll(".filter-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-pill").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        settings.activeFilter = btn.dataset.cat;
+        updateStatusSummary();
+      });
+    });
+
+    // 2. Search Box
+    const searchInput = document.getElementById("node-search");
+    searchInput.addEventListener("input", (e) => {
+      settings.searchQuery = e.target.value.trim();
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && settings.searchQuery) {
+        const found = nodes.find((n) => n.label.toLowerCase().includes(settings.searchQuery.toLowerCase()));
+        if (found) {
+          selectNode(found);
+          camera.targetScale = 1.35;
+        }
+      }
+    });
+
+    function updateStatusSummary() {
+      const activeCount = nodes.filter((n) => settings.activeFilter === "all" || n.category === settings.activeFilter).length;
+      document.getElementById("graph-status-text").textContent =
+        `Showing ${activeCount} of ${nodes.length} nodes • ${edges.length} interconnected architectural links`;
+    }
+
+    // 3. Settings Sliders & Inputs
+    document.getElementById("toggle-orbit").addEventListener("change", (e) => {
+      settings.liveOrbit = e.target.checked;
+    });
+
+    document.getElementById("edge-labels-select").addEventListener("change", (e) => {
+      settings.edgeLabels = e.target.value;
+    });
+
+    document.getElementById("node-size-slider").addEventListener("input", (e) => {
+      settings.nodeSize = e.target.value / 100;
+      document.getElementById("node-size-val").textContent = `${e.target.value}%`;
+    });
+
+    document.getElementById("label-size-slider").addEventListener("input", (e) => {
+      settings.labelSize = e.target.value / 100;
+      document.getElementById("label-size-val").textContent = `${e.target.value}%`;
+    });
+
+    document.getElementById("edge-opacity-slider").addEventListener("input", (e) => {
+      settings.edgeOpacity = e.target.value / 100;
+      document.getElementById("edge-opacity-val").textContent = `${e.target.value}%`;
+    });
+
+    document.getElementById("ring-spacing-slider").addEventListener("input", (e) => {
+      settings.ringSpacing = parseInt(e.target.value, 10);
+      document.getElementById("ring-spacing-val").textContent = `${e.target.value} px`;
+      updateNodePositions();
+    });
+
+    document.getElementById("outer-shell-slider").addEventListener("input", (e) => {
+      settings.outerShell = parseInt(e.target.value, 10);
+      document.getElementById("outer-shell-val").textContent = e.target.value;
+      updateNodePositions();
+    });
+
+    document.getElementById("spring-slider").addEventListener("input", (e) => {
+      settings.physicsSpring = e.target.value / 100;
+      document.getElementById("spring-val").textContent = `${e.target.value}%`;
+    });
+
+    document.getElementById("orbit-speed-slider").addEventListener("input", (e) => {
+      settings.orbitSpeed = e.target.value / 100;
+      document.getElementById("orbit-speed-val").textContent = `${e.target.value}%`;
+    });
+
+    // 4. Fit Graph
+    document.getElementById("fit-graph-btn").addEventListener("click", () => {
+      camera.targetX = width / 2;
+      camera.targetY = height / 2;
+      camera.targetScale = 0.85;
+      settings.selectedNodeId = null;
+      resetInspector();
+    });
+
+    // 5. Download PNG
+    document.getElementById("export-png-btn").addEventListener("click", () => {
+      // Temporarily render crisp image
+      const link = document.createElement("a");
+      link.download = "learningedge-architecture.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    });
+
+    // Start Animation Loop
+    render();
+  </script>
+</body>
+</html>

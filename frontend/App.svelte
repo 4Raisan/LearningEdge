@@ -8,14 +8,13 @@
     invokeTauri,
     isTauriRuntime,
     resolveVideoUrl,
-    type KnowledgeGraphSnapshot,
     type ModelCapabilities,
     type PipelineRunRecord,
     type PresetConfig,
     type RunArtifactsBundle,
   } from "./lib/tauriApi";
 
-  type TabId = "lecture" | "pipeline" | "preview" | "presets" | "kg";
+  type TabId = "lecture" | "pipeline" | "preview" | "presets";
 
   let activeTab = $state<TabId>("lecture");
   let tauriMode = $state(isTauriRuntime());
@@ -53,16 +52,9 @@
   let secretValueInput = $state("");
   let secretExists = $state<boolean | null>(null);
 
-  // Knowledge Graph & Dreaming tab
-  let kg = $state<KnowledgeGraphSnapshot>({
-    concepts: [],
-    edges: [],
-    dream_suggestions: [],
-  });
+  // FTS5 Source Search
   let ftsQuery = $state("");
   let ftsHits = $state<Array<{ segment_id: string; source_ref: string; text: string }>>([]);
-  let mergeKeepId = $state("");
-  let mergeDropId = $state("");
 
   async function refreshRuns(selectRunId?: string) {
     if (!tauriMode) return;
@@ -110,7 +102,6 @@
         statusNotice = `Run ${b.run.id}: ${b.run.status} (${b.run.current_stage ?? ""})`;
         if (["completed", "held_for_review", "failed"].includes(b.run.status)) {
           await refreshRuns(b.run.id);
-          await refreshKg();
           break;
         }
       }
@@ -141,29 +132,6 @@
     statusNotice = `Stored credential ref '${secretRefInput}' in OS Credential Store.`;
   }
 
-  async function refreshKg() {
-    if (!tauriMode) return;
-    kg = await invokeTauri<KnowledgeGraphSnapshot>("get_knowledge_graph");
-  }
-
-  async function triggerDreaming() {
-    if (!tauriMode) return;
-    await invokeTauri("run_dreaming");
-    await refreshKg();
-  }
-
-  async function reviewDream(id: string, accept: boolean) {
-    if (!tauriMode) return;
-    await invokeTauri("review_dream_suggestion", { suggestionId: id, accept });
-    await refreshKg();
-  }
-
-  async function mergeConcepts() {
-    if (!tauriMode || !mergeKeepId || !mergeDropId || mergeKeepId === mergeDropId) return;
-    await invokeTauri("merge_kg_concepts", { keepId: mergeKeepId, mergeId: mergeDropId });
-    await refreshKg();
-  }
-
   async function runFtsSearch() {
     if (!tauriMode || !ftsQuery.trim()) return;
     ftsHits = await invokeTauri("search_sources_fts", { query: ftsQuery.trim() });
@@ -177,7 +145,6 @@
       capabilities = await invokeTauri<ModelCapabilities[]>("get_provider_capabilities");
       voices = await invokeTauri<string[]>("get_windows_voices");
       await refreshRuns();
-      await refreshKg();
     } catch (e) {
       statusNotice = String(e);
     }
@@ -202,9 +169,6 @@
       </button>
       <button class:active={activeTab === "presets"} onclick={() => (activeTab = "presets")}>
         Providers & Presets
-      </button>
-      <button class:active={activeTab === "kg"} onclick={() => (activeTab = "kg")}>
-        Knowledge Graph & Dreaming
       </button>
     </nav>
   </header>
@@ -293,6 +257,26 @@
             {/each}
           </div>
         {/if}
+
+        <details class="fts-collapsible" style="margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 10px;">
+          <summary class="fts-summary">
+            <span>Lecture Database Text Search (FTS5) ({ftsHits.length} hits)</span>
+          </summary>
+          <div class="row-gap" style="margin: 12px 0 8px;">
+            <input
+              class="input"
+              bind:value={ftsQuery}
+              placeholder="Search FTS5 passages (e.g. cache OR locality OR DRAM)"
+              style="flex: 1;"
+            />
+            <button class="btn" onclick={runFtsSearch}>Search FTS5</button>
+          </div>
+          {#each ftsHits as hit}
+            <div class="trace-item">
+              <span class="badge">{hit.source_ref}</span> {hit.text}
+            </div>
+          {/each}
+        </details>
       </div>
     </section>
   {:else if activeTab === "preview"}
@@ -401,89 +385,34 @@
         </ul>
       </div>
     </section>
-  {:else if activeTab === "kg"}
-    <section class="grid-2">
-      <div class="card">
-        <div class="row-between">
-          <h2>Personal Knowledge Graph ({kg.concepts.length} concepts, {kg.edges.length} edges)</h2>
-          <button class="btn" onclick={runFtsSearch}>Search FTS5</button>
-        </div>
-
-        <div class="row-gap" style="margin: 10px 0;">
-          <input class="input" bind:value={ftsQuery} placeholder="Search FTS5 passages (e.g. cache OR locality)" />
-        </div>
-        {#each ftsHits as hit}
-          <div class="trace-item">
-            <span class="badge">{hit.source_ref}</span> {hit.text}
-          </div>
-        {/each}
-
-        <h3>Merge Duplicate Concepts</h3>
-        <div class="row-gap">
-          <select class="select" bind:value={mergeKeepId}>
-            <option value="">Keep concept...</option>
-            {#each kg.concepts as c}
-              <option value={c.id}>{c.label}</option>
-            {/each}
-          </select>
-          <select class="select" bind:value={mergeDropId}>
-            <option value="">Merge duplicate...</option>
-            {#each kg.concepts as c}
-              <option value={c.id}>{c.label}</option>
-            {/each}
-          </select>
-          <button class="btn-secondary" onclick={mergeConcepts}>Merge</button>
-        </div>
-
-        <div class="trace-list" style="margin-top: 12px;">
-          {#each kg.concepts as c}
-            <div class="trace-item">
-              <strong>{c.label}</strong>
-              <div class="muted">{c.summary}</div>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="row-between">
-          <h2>Dreaming Suggestions (Pending vs Accepted)</h2>
-          <button class="btn" onclick={triggerDreaming}>Run Dreaming</button>
-        </div>
-        {#each kg.dream_suggestions as sug}
-          <div class="trace-item">
-            <div class="row-between">
-              <strong>{sug.title}</strong>
-              <span class="badge {sug.status === 'accepted' ? 'ok' : sug.status === 'pending' ? 'warn' : ''}">
-                {sug.status}
-              </span>
-            </div>
-            <p class="muted">{sug.rationale}</p>
-            <div class="muted">Sources: {sug.supporting_sources.join(", ")}</div>
-            {#if sug.status === "pending"}
-              <div class="row-gap" style="margin-top: 8px;">
-                <button class="btn" onclick={() => reviewDream(sug.id, true)}>Accept</button>
-                <button class="btn-secondary" onclick={() => reviewDream(sug.id, false)}>Dismiss</button>
-              </div>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </section>
   {/if}
 </main>
 
 <style>
   .shell {
-    max-width: 1600px;
+    max-width: 1760px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 16px;
     min-height: 100vh;
     box-sizing: border-box;
     background: #000000;
+  }
+  .fts-collapsible {
+    background: #0a0f1d;
+    border-color: #1e293b;
+    margin-top: 4px;
+  }
+  .fts-summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+  }
+  .fts-summary:hover {
+    color: #ffffff;
   }
   .topbar {
     display: flex;
