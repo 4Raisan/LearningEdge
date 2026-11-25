@@ -1,17 +1,20 @@
 import Konva from "konva";
 import { computeSceneLayout } from "./layout";
+import { renderSceneVisual } from "./motionVisuals";
 import { THEME } from "./theme";
 import type { ComputedSceneLayout, PositionedItem, SceneSpec, SceneTemplate, SentenceCue } from "./types";
 import {
   createOffscreenCanvas,
+  drawChipLabel,
   drawConnector,
   drawGlobalProgressBar,
-  drawKineticLine,
+  drawHighlightBox,
+  drawKineticMaskText,
   drawMotionBackdrop,
   drawVectorIcon,
   easeOutCubic,
-  pickIconForText,
   progressWindow,
+  resolveIconName,
   resolvePalette,
   roundedRectPath,
   type MotionPalette,
@@ -115,10 +118,11 @@ function renderCardInteriorToCanvas(
   accentColor: string,
   palette: MotionPalette,
   template: SceneTemplate,
-  isColumnCard: boolean
+  isColumnCard: boolean,
+  isCompactVisualCard = false
 ): void {
-  const padX = isColumnCard ? 18 : 22;
-  const padY = 16;
+  const padX = isColumnCard || isCompactVisualCard ? 18 : 22;
+  const padY = isCompactVisualCard ? 13 : 16;
 
   // Card surface
   roundedRectPath(ctx, 0, 0, pos.width, pos.height, 14);
@@ -128,18 +132,18 @@ function renderCardInteriorToCanvas(
   ctx.lineWidth = isActive ? 2.4 : 1.3;
   ctx.stroke();
 
-  if (isColumnCard) {
+  if (isColumnCard || isCompactVisualCard) {
     roundedRectPath(ctx, 14, 0, Math.max(24, pos.width - 28), 4, 2);
     ctx.fillStyle = accentColor;
     ctx.globalAlpha = isActive ? 0.95 : 0.65;
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    let curY = 16;
+    let curY = padY;
     if (pos.badgeLines.length > 0) {
       const lineH = Math.ceil(pos.badgeFontSize * 1.3);
       const badgeH = pos.badgeLines.length * Math.ceil(pos.badgeFontSize * 1.32) + 8;
-      const badgeW = Math.max(96, pos.width - padX * 2 - 40);
+      const badgeW = Math.max(96, pos.width - padX * 2 - 42);
       roundedRectPath(ctx, padX, curY, badgeW, badgeH, 7);
       ctx.fillStyle = isActive ? accentColor : palette.surfaceActive;
       ctx.fill();
@@ -153,8 +157,8 @@ function renderCardInteriorToCanvas(
       pos.badgeLines.forEach((line, i) => {
         ctx.fillText(line, padX + 10, curY + 4 + i * lineH, badgeW - 20);
       });
-      curY += badgeH + 10;
-    } else {
+      curY += badgeH + (isCompactVisualCard ? 8 : 10);
+    } else if (isColumnCard) {
       curY += 26;
     }
 
@@ -162,10 +166,11 @@ function renderCardInteriorToCanvas(
     ctx.font = `700 ${pos.labelFontSize}px ${THEME.fontFamily}`;
     ctx.fillStyle = palette.textPrimary;
     ctx.textBaseline = "top";
+    const labelMaxW = pos.width - padX * 2 - (isCompactVisualCard && pos.badgeLines.length === 0 ? 44 : 0);
     pos.labelLines.forEach((line, i) => {
-      ctx.fillText(line, padX, curY + i * labelLH, pos.width - padX * 2);
+      ctx.fillText(line, padX, curY + i * labelLH, labelMaxW);
     });
-    curY += Math.max(1, pos.labelLines.length) * labelLH + 10;
+    curY += Math.max(1, pos.labelLines.length) * labelLH + (isCompactVisualCard ? 6 : 10);
 
     if (pos.detailLines.length > 0) {
       const detailLH = Math.ceil(pos.detailFontSize * 1.3);
@@ -236,7 +241,8 @@ function drawCardFast(
   timeMs: number,
   palette: MotionPalette,
   template: SceneTemplate,
-  isColumnCard: boolean
+  isColumnCard: boolean,
+  isCompactVisualCard = false
 ): void {
   const x = pos.x;
   const y = pos.y + vis.slideY;
@@ -256,14 +262,24 @@ function drawCardFast(
     ctx.restore();
   }
 
-  const cacheKey = `${sceneId}:${pos.item.id}:${pos.width}x${pos.height}:${palette.name}:${template}:${isColumnCard ? "c" : "r"}:${vis.isActive ? 1 : 0}:${accentColor}:${pos.item.label}:${pos.item.detail}`;
+  const cacheKey = `${sceneId}:${pos.item.id}:${pos.width}x${pos.height}:${palette.name}:${template}:${isColumnCard ? "c" : isCompactVisualCard ? "v" : "r"}:${vis.isActive ? 1 : 0}:${accentColor}:${pos.item.stat ?? ""}:${pos.item.badge ?? ""}:${pos.item.label}:${pos.item.detail}`;
   let sprite = cardSpriteCache.get(cacheKey);
   if (!sprite) {
     const off = createOffscreenCanvas(ctx, Math.ceil(pos.width), Math.ceil(pos.height));
     if (off) {
       const octx = off.getContext("2d");
       if (octx) {
-        renderCardInteriorToCanvas(octx, pos, index, vis.isActive, accentColor, palette, template, isColumnCard);
+        renderCardInteriorToCanvas(
+          octx,
+          pos,
+          index,
+          vis.isActive,
+          accentColor,
+          palette,
+          template,
+          isColumnCard,
+          isCompactVisualCard
+        );
         if (cardSpriteCache.size > 400) cardSpriteCache.clear();
         cardSpriteCache.set(cacheKey, off);
         sprite = off;
@@ -276,13 +292,23 @@ function drawCardFast(
   } else {
     ctx.save();
     ctx.translate(x, y);
-    renderCardInteriorToCanvas(ctx, pos, index, vis.isActive, accentColor, palette, template, isColumnCard);
+    renderCardInteriorToCanvas(
+      ctx,
+      pos,
+      index,
+      vis.isActive,
+      accentColor,
+      palette,
+      template,
+      isColumnCard,
+      isCompactVisualCard
+    );
     ctx.restore();
   }
 
   // Animated semantic vector icon chip in top-right corner
-  const cx = x + pos.width - (isColumnCard ? 24 : 26);
-  const cy = y + 30;
+  const cx = x + pos.width - (isColumnCard || isCompactVisualCard ? 24 : 26);
+  const cy = y + (isCompactVisualCard ? 27 : 30);
   ctx.beginPath();
   ctx.arc(cx, cy, 15, 0, Math.PI * 2);
   ctx.fillStyle = vis.isActive ? accentColor : palette.surfaceActive;
@@ -293,10 +319,36 @@ function drawCardFast(
   ctx.globalAlpha = vis.opacity * (vis.isActive ? 0.9 : 0.65);
   ctx.stroke();
   ctx.globalAlpha = vis.opacity;
-  const iconName = pickIconForText(`${pos.item.badge ?? ""} ${pos.item.label} ${pos.item.detail}`, index);
+  const iconName = resolveIconName(
+    pos.item.icon,
+    `${pos.item.badge ?? ""} ${pos.item.label} ${pos.item.detail}`,
+    index
+  );
   drawVectorIcon(ctx, iconName, cx, cy, 18, accentColor, vis.revealProgress);
 
   ctx.restore();
+}
+
+export interface NativePixelCanvasLike {
+  data?: () => Uint8Array;
+  getContext: (id: "2d") => CanvasRenderingContext2D;
+  toBuffer?: (mime: string) => Uint8Array;
+}
+
+/**
+ * Extract raw RGBA pixels using native `@napi-rs/canvas` `data()` when available
+ * to avoid unmanaged `getImageData()` allocations, falling back to 2D `getImageData`.
+ */
+export function extractCanvasRgbaBuffer(
+  canvasEl: NativePixelCanvasLike,
+  width: number,
+  height: number
+): Uint8Array {
+  if (typeof canvasEl.data === "function") {
+    return canvasEl.data();
+  }
+  const img = canvasEl.getContext("2d").getImageData(0, 0, width, height);
+  return new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.byteLength);
 }
 
 /**
@@ -323,18 +375,19 @@ export function renderSceneAtTime(
 
   let layer = stage.findOne<Konva.Layer>("#scene-layer");
   if (!layer) {
-    layer = new Konva.Layer({ id: "scene-layer" });
+    layer = new Konva.Layer({ id: "scene-layer", listening: false });
     stage.add(layer);
   }
-  layer.destroyChildren();
 
   const layout = getCachedLayout(scene, width, height);
   const introP = progressWindow(timeMs, 0, 520);
 
-  layer.add(
-    new Konva.Shape({
-      id: "motion-scene",
-      sceneFunc(konvaCtx) {
+  let shape = layer.findOne<Konva.Shape>("#motion-scene");
+  if (!shape) {
+    shape = new Konva.Shape({ id: "motion-scene", listening: false });
+    layer.add(shape);
+  }
+  shape.sceneFunc((konvaCtx) => {
         const ctx = rawCanvas2d(konvaCtx);
 
         // 1. Continuous ambient backdrop + top global progress bar
@@ -377,15 +430,15 @@ export function renderSceneAtTime(
         // 3. Kinetic headline & clean subtitle
         const titleLH = Math.ceil(THEME.titleFontSize * 1.25);
         layout.titleLines.forEach((line, idx) => {
-          const lineP = progressWindow(timeMs, idx * 90, 440);
-          drawKineticLine(
+          drawKineticMaskText(
             ctx,
             line,
             THEME.safeMargin,
             34 + idx * titleLH,
             `700 ${THEME.titleFontSize}px ${THEME.fontFamily}`,
             palette.textPrimary,
-            lineP
+            timeMs / 1000,
+            { start: idx * 0.08, stagger: 0.045, dur: 0.4 }
           );
         });
 
@@ -405,8 +458,54 @@ export function renderSceneAtTime(
           ctx.restore();
         }
 
-        // 4. Template-specific motion graphics & cards
-        if (scene.template === "concept_reveal" || scene.template === "recap_ladder") {
+        // 4. Visual stage (kinetic_title, diagram, chart, metaphor, svg_sketch) + cards
+        if (layout.visualBox && scene.visual) {
+          renderSceneVisual(
+            ctx,
+            scene.visual,
+            layout.visualBox,
+            timeMs,
+            cues,
+            palette,
+            sceneDurationMs
+          );
+          layout.positionedItems.forEach((pos, idx) => {
+            const vis = itemVisibility(
+              idx,
+              layout.positionedItems.length,
+              pos.item.cue_index,
+              timeMs,
+              cues
+            );
+            const accent = idx % 2 === 0 ? palette.accentPrimary : palette.accentSecondary;
+            drawCardFast(
+              ctx,
+              scene.scene_id,
+              pos,
+              idx,
+              vis,
+              vis.isActive ? palette.accentWarm : accent,
+              timeMs,
+              palette,
+              scene.template,
+              false,
+              true
+            );
+            if (vis.isActive) {
+              drawHighlightBox(
+                ctx,
+                pos.x - 1,
+                pos.y + vis.slideY - 1,
+                pos.width + 2,
+                pos.height + 2,
+                palette.accentWarm,
+                vis.revealProgress,
+                0.7,
+                14
+              );
+            }
+          });
+        } else if (scene.template === "concept_reveal" || scene.template === "recap_ladder") {
           if (scene.template === "recap_ladder" && layout.positionedItems.length > 1) {
             for (let idx = 0; idx < layout.positionedItems.length - 1; idx++) {
               const curr = layout.positionedItems[idx];
@@ -434,6 +533,34 @@ export function renderSceneAtTime(
             drawCardFast(ctx, scene.scene_id, pos, idx, vis, accent, timeMs, palette, scene.template, false);
           });
         } else if (scene.template === "comparison_grid") {
+          if (layout.positionedItems.length === 2 && width - THEME.safeMargin * 2 >= 820) {
+            const left = layout.positionedItems[0];
+            const right = layout.positionedItems[1];
+            const midX = (left.x + left.width + right.x) / 2;
+            const topY = Math.min(left.y, right.y) + 12;
+            const botY = Math.max(left.y + left.height, right.y + right.height) - 12;
+            ctx.save();
+            ctx.strokeStyle = palette.border;
+            ctx.lineWidth = 1.6;
+            ctx.setLineDash([6, 6]);
+            ctx.globalAlpha = 0.65 * easeOutCubic(introP);
+            ctx.beginPath();
+            ctx.moveTo(midX, topY);
+            ctx.lineTo(midX, botY);
+            ctx.stroke();
+            ctx.restore();
+            drawChipLabel(
+              ctx,
+              "VS",
+              midX,
+              (topY + botY) / 2,
+              palette.accentWarm,
+              palette.bgStart,
+              easeOutCubic(introP),
+              13,
+              THEME.fontFamily
+            );
+          }
           layout.positionedItems.forEach((pos, idx) => {
             const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
             const colAccent = idx % 2 === 0 ? palette.accentPrimary : palette.accentSecondary;
@@ -462,62 +589,116 @@ export function renderSceneAtTime(
             drawCardFast(ctx, scene.scene_id, pos, idx, vis, palette.accentPrimary, timeMs, palette, scene.template, true);
           });
         } else {
-          // timeline
-          const spineY = layout.contentTop + 56;
-          drawConnector(
-            ctx,
-            THEME.safeMargin,
-            spineY,
-            width - THEME.safeMargin,
-            spineY,
-            introP,
-            timeMs,
-            palette.accentSecondary,
-            palette.accentWarm
-          );
+          // timeline: vertical left-spine in portrait, horizontal top-spine in landscape
+          const innerW = width - THEME.safeMargin * 2;
+          if (innerW < 820 && layout.positionedItems.length > 0) {
+            const spineX = THEME.safeMargin + 16;
+            const firstPos = layout.positionedItems[0];
+            const lastPos = layout.positionedItems[layout.positionedItems.length - 1];
+            const topY = firstPos.y + 18;
+            const botY = lastPos.y + Math.min(lastPos.height - 18, 42);
+            drawConnector(
+              ctx,
+              spineX,
+              topY,
+              spineX,
+              Math.max(topY + 24, botY),
+              introP,
+              timeMs,
+              palette.accentSecondary,
+              palette.accentWarm
+            );
 
-          layout.positionedItems.forEach((pos, idx) => {
-            const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
-            const centerX = pos.x + Math.floor(pos.width / 2);
+            layout.positionedItems.forEach((pos, idx) => {
+              const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
+              const nodeY = pos.y + 28 + vis.slideY;
 
-            ctx.save();
-            if (vis.isActive) {
-              const haloR = 14 + 4 * Math.sin((timeMs / 1000) * 5);
-              ctx.globalAlpha = 0.28;
-              ctx.fillStyle = palette.accentWarm;
-              ctx.beginPath();
-              ctx.arc(centerX, spineY, haloR, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.globalAlpha = Math.max(0.4, vis.opacity);
-            ctx.fillStyle = vis.isActive ? palette.accentWarm : palette.accentPrimary;
-            ctx.beginPath();
-            ctx.arc(centerX, spineY, vis.isActive ? 10 : 7.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = palette.bgStart;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            ctx.globalAlpha = Math.max(0.25, vis.opacity);
-            ctx.strokeStyle = vis.isActive ? palette.accentWarm : palette.border;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(centerX, spineY + 10);
-            ctx.lineTo(centerX, pos.y + vis.slideY);
-            ctx.stroke();
-
-            if (pos.item.badge) {
-              ctx.globalAlpha = Math.max(0.35, vis.opacity);
-              ctx.font = `700 ${THEME.labelFontSize}px ${THEME.fontFamily}`;
+              ctx.save();
+              if (vis.isActive) {
+                const haloR = 13 + 3.5 * Math.sin((timeMs / 1000) * 5);
+                ctx.globalAlpha = 0.28;
+                ctx.fillStyle = palette.accentWarm;
+                ctx.beginPath();
+                ctx.arc(spineX, nodeY, haloR, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              ctx.globalAlpha = Math.max(0.4, vis.opacity);
               ctx.fillStyle = vis.isActive ? palette.accentWarm : palette.accentPrimary;
-              ctx.textAlign = "center";
-              ctx.textBaseline = "top";
-              ctx.fillText(pos.item.badge, centerX, spineY - 38, pos.width);
-            }
-            ctx.restore();
+              ctx.beginPath();
+              ctx.arc(spineX, nodeY, vis.isActive ? 9 : 7, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = palette.bgStart;
+              ctx.lineWidth = 2;
+              ctx.stroke();
 
-            drawCardFast(ctx, scene.scene_id, pos, idx, vis, palette.accentWarm, timeMs, palette, scene.template, true);
-          });
+              ctx.globalAlpha = Math.max(0.25, vis.opacity);
+              ctx.strokeStyle = vis.isActive ? palette.accentWarm : palette.border;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(spineX + 9, nodeY);
+              ctx.lineTo(pos.x, nodeY);
+              ctx.stroke();
+              ctx.restore();
+
+              drawCardFast(ctx, scene.scene_id, pos, idx, vis, palette.accentWarm, timeMs, palette, scene.template, false);
+            });
+          } else {
+            const spineY = layout.contentTop + 56;
+            drawConnector(
+              ctx,
+              THEME.safeMargin,
+              spineY,
+              width - THEME.safeMargin,
+              spineY,
+              introP,
+              timeMs,
+              palette.accentSecondary,
+              palette.accentWarm
+            );
+
+            layout.positionedItems.forEach((pos, idx) => {
+              const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
+              const centerX = pos.x + Math.floor(pos.width / 2);
+
+              ctx.save();
+              if (vis.isActive) {
+                const haloR = 14 + 4 * Math.sin((timeMs / 1000) * 5);
+                ctx.globalAlpha = 0.28;
+                ctx.fillStyle = palette.accentWarm;
+                ctx.beginPath();
+                ctx.arc(centerX, spineY, haloR, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              ctx.globalAlpha = Math.max(0.4, vis.opacity);
+              ctx.fillStyle = vis.isActive ? palette.accentWarm : palette.accentPrimary;
+              ctx.beginPath();
+              ctx.arc(centerX, spineY, vis.isActive ? 10 : 7.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = palette.bgStart;
+              ctx.lineWidth = 2;
+              ctx.stroke();
+
+              ctx.globalAlpha = Math.max(0.25, vis.opacity);
+              ctx.strokeStyle = vis.isActive ? palette.accentWarm : palette.border;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(centerX, spineY + 10);
+              ctx.lineTo(centerX, pos.y + vis.slideY);
+              ctx.stroke();
+
+              if (pos.item.badge) {
+                ctx.globalAlpha = Math.max(0.35, vis.opacity);
+                ctx.font = `700 ${THEME.labelFontSize}px ${THEME.fontFamily}`;
+                ctx.fillStyle = vis.isActive ? palette.accentWarm : palette.accentPrimary;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillText(pos.item.badge, centerX, spineY - 38, pos.width);
+              }
+              ctx.restore();
+
+              drawCardFast(ctx, scene.scene_id, pos, idx, vis, palette.accentWarm, timeMs, palette, scene.template, true);
+            });
+          }
         }
 
         // 5. Caption bar when live preview captions are enabled
@@ -540,9 +721,7 @@ export function renderSceneAtTime(
             ctx.restore();
           }
         }
-      },
-    })
-  );
+      });
 
   layer.draw();
 }
