@@ -1,9 +1,34 @@
 import Konva from "konva";
 import { computeSceneLayout } from "./layout";
 import { THEME } from "./theme";
-import type { ComputedSceneLayout, PositionedItem, SceneSpec, SentenceCue } from "./types";
+import type { ComputedSceneLayout, PositionedItem, SceneSpec, SceneTemplate, SentenceCue } from "./types";
+import {
+  createOffscreenCanvas,
+  drawConnector,
+  drawGlobalProgressBar,
+  drawKineticLine,
+  drawMotionBackdrop,
+  drawVectorIcon,
+  easeOutCubic,
+  pickIconForText,
+  progressWindow,
+  resolvePalette,
+  roundedRectPath,
+  type MotionPalette,
+} from "./visualKit";
+
+export interface RenderOptions {
+  showCaptions?: boolean;
+  width?: number;
+  height?: number;
+  theme?: string;
+  sceneIndex?: number;
+  sceneTotal?: number;
+  sceneDurationMs?: number;
+}
 
 const layoutCache = new WeakMap<SceneSpec, { key: string; layout: ComputedSceneLayout }>();
+const cardSpriteCache = new Map<string, HTMLCanvasElement>();
 
 function getCachedLayout(scene: SceneSpec, width: number, height: number): ComputedSceneLayout {
   const key = `${scene.scene_id}:${width}x${height}:${scene.items.length}:${scene.title}:${scene.subtitle ?? ""}`;
@@ -16,13 +41,34 @@ function getCachedLayout(scene: SceneSpec, width: number, height: number): Compu
   return computed;
 }
 
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
+function rawCanvas2d(konvaCtx: Konva.Context): CanvasRenderingContext2D {
+  return (konvaCtx as unknown as { _context?: CanvasRenderingContext2D })._context ??
+    (konvaCtx as unknown as CanvasRenderingContext2D);
 }
 
-function easeOutCubic(t: number): number {
-  const x = clamp01(t);
-  return 1 - Math.pow(1 - x, 3);
+function resolveThemeName(explicit?: string): string {
+  if (explicit === "light" || explicit === "forest" || explicit === "night") {
+    return explicit;
+  }
+  const bg = THEME.colors.bg.toLowerCase();
+  if (bg.startsWith("#f5") || bg.startsWith("#ff")) return "light";
+  if (bg.startsWith("#1028") || bg.startsWith("#071")) return "forest";
+  return "night";
+}
+
+function templateDisplayName(tpl: SceneTemplate): string {
+  switch (tpl) {
+    case "concept_reveal":
+      return "CONCEPT REVEAL";
+    case "process_diagram":
+      return "PROCESS FLOW";
+    case "timeline":
+      return "TIMELINE";
+    case "comparison_grid":
+      return "COMPARISON";
+    case "recap_ladder":
+      return "KEY RECAP";
+  }
 }
 
 function itemVisibility(
@@ -31,11 +77,11 @@ function itemVisibility(
   cueIndex: number | null | undefined,
   timeMs: number,
   cues: SentenceCue[]
-): { opacity: number; slideY: number; isActive: boolean } {
+): { opacity: number; slideY: number; revealProgress: number; isActive: boolean } {
   if (cues.length === 0) {
-    const staggerMs = itemIndex * 350;
-    const p = easeOutCubic((timeMs - staggerMs) / 260);
-    return { opacity: Math.max(0.15, p), slideY: (1 - p) * 14, isActive: false };
+    const staggerMs = itemIndex * 320;
+    const p = easeOutCubic((timeMs - staggerMs) / 280);
+    return { opacity: Math.max(0.18, p), slideY: (1 - p) * 14, revealProgress: p, isActive: false };
   }
 
   const idx =
@@ -44,14 +90,13 @@ function itemVisibility(
       : Math.min(cues.length - 1, Math.floor((itemIndex * cues.length) / Math.max(1, totalItems)));
 
   const cue = cues[idx];
-  const revealDuration = 280;
+  const revealDuration = 320;
   if (timeMs < cue.start_ms) {
-    // Subtle ghost preview before reveal so structure feels cohesive yet reveals cleanly at cue
-    return { opacity: 0.14, slideY: 12, isActive: false };
+    return { opacity: 0.16, slideY: 12, revealProgress: 0.12, isActive: false };
   }
   const p = easeOutCubic((timeMs - cue.start_ms) / revealDuration);
   const isActive = timeMs >= cue.start_ms && timeMs <= cue.end_ms;
-  return { opacity: p, slideY: (1 - p) * 12, isActive };
+  return { opacity: p, slideY: (1 - p) * 12, revealProgress: p, isActive };
 }
 
 function activeCueText(timeMs: number, cues: SentenceCue[]): string {
@@ -62,214 +107,216 @@ function activeCueText(timeMs: number, cues: SentenceCue[]): string {
   return (last ?? cues[0]).text;
 }
 
-function drawConceptItem(
-  layer: Konva.Layer,
+function renderCardInteriorToCanvas(
+  ctx: CanvasRenderingContext2D,
   pos: PositionedItem,
-  vis: { opacity: number; slideY: number; isActive: boolean }
-) {
-  const group = new Konva.Group({
-    x: pos.x,
-    y: pos.y + vis.slideY,
-    opacity: vis.opacity,
-  });
-
-  group.add(
-    new Konva.Rect({
-      x: 0,
-      y: 0,
-      width: pos.width,
-      height: pos.height,
-      cornerRadius: 12,
-      fill: vis.isActive ? THEME.colors.surfaceActive : THEME.colors.surface,
-      stroke: vis.isActive ? THEME.colors.accent : THEME.colors.surfaceBorder,
-      strokeWidth: vis.isActive ? 2.5 : 1.5,
-    })
-  );
-
-  // Left accent bar
-  group.add(
-    new Konva.Rect({
-      x: 0,
-      y: 10,
-      width: 6,
-      height: Math.max(16, pos.height - 20),
-      cornerRadius: 3,
-      fill: vis.isActive ? THEME.colors.accent : THEME.colors.emerald,
-    })
-  );
-
-  const padX = 22;
+  index: number,
+  isActive: boolean,
+  accentColor: string,
+  palette: MotionPalette,
+  template: SceneTemplate,
+  isColumnCard: boolean
+): void {
+  const padX = isColumnCard ? 18 : 22;
   const padY = 16;
-  let badgeOffset = 0;
 
+  // Card surface
+  roundedRectPath(ctx, 0, 0, pos.width, pos.height, 14);
+  ctx.fillStyle = isActive ? palette.surfaceActive : palette.surface;
+  ctx.fill();
+  ctx.strokeStyle = isActive ? accentColor : palette.border;
+  ctx.lineWidth = isActive ? 2.4 : 1.3;
+  ctx.stroke();
+
+  if (isColumnCard) {
+    roundedRectPath(ctx, 14, 0, Math.max(24, pos.width - 28), 4, 2);
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = isActive ? 0.95 : 0.65;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    let curY = 16;
+    if (pos.badgeLines.length > 0) {
+      const lineH = Math.ceil(pos.badgeFontSize * 1.3);
+      const badgeH = pos.badgeLines.length * Math.ceil(pos.badgeFontSize * 1.32) + 8;
+      const badgeW = Math.max(96, pos.width - padX * 2 - 40);
+      roundedRectPath(ctx, padX, curY, badgeW, badgeH, 7);
+      ctx.fillStyle = isActive ? accentColor : palette.surfaceActive;
+      ctx.fill();
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = `700 ${pos.badgeFontSize}px ${THEME.fontFamily}`;
+      ctx.fillStyle = isActive ? palette.badgeText : accentColor;
+      ctx.textBaseline = "top";
+      pos.badgeLines.forEach((line, i) => {
+        ctx.fillText(line, padX + 10, curY + 4 + i * lineH, badgeW - 20);
+      });
+      curY += badgeH + 10;
+    } else {
+      curY += 26;
+    }
+
+    const labelLH = Math.ceil(pos.labelFontSize * 1.32);
+    ctx.font = `700 ${pos.labelFontSize}px ${THEME.fontFamily}`;
+    ctx.fillStyle = palette.textPrimary;
+    ctx.textBaseline = "top";
+    pos.labelLines.forEach((line, i) => {
+      ctx.fillText(line, padX, curY + i * labelLH, pos.width - padX * 2);
+    });
+    curY += Math.max(1, pos.labelLines.length) * labelLH + 10;
+
+    if (pos.detailLines.length > 0) {
+      const detailLH = Math.ceil(pos.detailFontSize * 1.3);
+      ctx.font = `${pos.detailFontSize}px ${THEME.fontFamily}`;
+      ctx.fillStyle = palette.textSecondary;
+      pos.detailLines.forEach((line, i) => {
+        ctx.fillText(line, padX, curY + i * detailLH, pos.width - padX * 2);
+      });
+    }
+    return;
+  }
+
+  // Left vertical accent rail for concept_reveal / recap_ladder
+  const barGrad = ctx.createLinearGradient(0, 10, 0, pos.height - 10);
+  barGrad.addColorStop(0, accentColor);
+  barGrad.addColorStop(1, palette.accentSecondary);
+  roundedRectPath(ctx, 0, 10, 6, Math.max(16, pos.height - 20), 3);
+  ctx.fillStyle = barGrad;
+  ctx.fill();
+
+  let badgeOffset = 0;
   if (pos.badgeLines.length > 0) {
-    const badgeW = Math.min(220, pos.badgeLines[0].length * 11 + 28);
-    group.add(
-      new Konva.Rect({
-        x: padX,
-        y: padY,
-        width: badgeW,
-        height: 28,
-        cornerRadius: 6,
-        fill: THEME.colors.accentSoft,
-        stroke: THEME.colors.accent,
-        strokeWidth: 1,
-      })
-    );
-    group.add(
-      new Konva.Text({
-        x: padX,
-        y: padY + 4,
-        width: badgeW,
-        align: "center",
-        text: pos.badgeLines[0],
-        fontSize: pos.badgeFontSize,
-        fontStyle: "bold",
-        fontFamily: THEME.fontFamily,
-        fill: THEME.colors.accent,
-      })
-    );
+    const labelStr = template === "recap_ladder" ? `#${index + 1} · ${pos.badgeLines[0]}` : pos.badgeLines[0];
+    const badgeW = Math.min(220, labelStr.length * 10.5 + 26);
+    roundedRectPath(ctx, padX, padY, badgeW, 28, 7);
+    ctx.fillStyle = isActive ? accentColor : palette.surfaceActive;
+    ctx.fill();
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = `700 ${pos.badgeFontSize}px ${THEME.fontFamily}`;
+    ctx.fillStyle = isActive ? palette.badgeText : accentColor;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(labelStr, padX + badgeW / 2, padY + 14, badgeW - 10);
+    ctx.textAlign = "left";
     badgeOffset = badgeW + 14;
   }
 
-  const labelText = pos.labelLines.join("\n");
-  const labelH = Math.max(1, pos.labelLines.length) * Math.ceil(pos.labelFontSize * 1.32);
-
-  group.add(
-    new Konva.Text({
-      x: padX + badgeOffset,
-      y: padY,
-      width: pos.width - padX * 2 - badgeOffset,
-      text: labelText,
-      fontSize: pos.labelFontSize,
-      lineHeight: 1.3,
-      fontStyle: "bold",
-      fontFamily: THEME.fontFamily,
-      fill: THEME.colors.textPrimary,
-    })
-  );
-
-  if (pos.detailLines.length > 0) {
-    group.add(
-      new Konva.Text({
-        x: padX,
-        y: padY + labelH + 8,
-        width: pos.width - padX * 2,
-        text: pos.detailLines.join("\n"),
-        fontSize: pos.detailFontSize,
-        lineHeight: 1.3,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.colors.textSecondary,
-      })
-    );
-  }
-
-  layer.add(group);
-}
-
-function drawColumnCard(
-  layer: Konva.Layer,
-  pos: PositionedItem,
-  vis: { opacity: number; slideY: number; isActive: boolean },
-  accentColor: string
-) {
-  const group = new Konva.Group({
-    x: pos.x,
-    y: pos.y + vis.slideY,
-    opacity: vis.opacity,
+  const labelLH = Math.ceil(pos.labelFontSize * 1.32);
+  ctx.font = `700 ${pos.labelFontSize}px ${THEME.fontFamily}`;
+  ctx.fillStyle = palette.textPrimary;
+  ctx.textBaseline = "top";
+  const labelW = Math.max(140, pos.width - padX * 2 - badgeOffset - 44);
+  pos.labelLines.forEach((line, i) => {
+    ctx.fillText(line, padX + badgeOffset, padY + i * labelLH, labelW);
   });
 
-  group.add(
-    new Konva.Rect({
-      x: 0,
-      y: 0,
-      width: pos.width,
-      height: pos.height,
-      cornerRadius: 12,
-      fill: vis.isActive ? THEME.colors.surfaceActive : THEME.colors.surface,
-      stroke: vis.isActive ? THEME.colors.accent : THEME.colors.surfaceBorder,
-      strokeWidth: vis.isActive ? 2.5 : 1.5,
-    })
-  );
-
-  const padX = 18;
-  let curY = 16;
-
-  if (pos.badgeLines.length > 0) {
-    const badgeH = pos.badgeLines.length * Math.ceil(pos.badgeFontSize * 1.32) + 8;
-    group.add(
-      new Konva.Rect({
-        x: padX,
-        y: curY,
-        width: pos.width - padX * 2,
-        height: badgeH,
-        cornerRadius: 6,
-        fill: THEME.colors.accentSoft,
-      })
-    );
-    group.add(
-      new Konva.Text({
-        x: padX + 8,
-        y: curY + 4,
-        width: pos.width - padX * 2 - 16,
-        text: pos.badgeLines.join("\n"),
-        fontSize: pos.badgeFontSize,
-        lineHeight: 1.3,
-        fontStyle: "bold",
-        fontFamily: THEME.fontFamily,
-        fill: accentColor,
-      })
-    );
-    curY += badgeH + 10;
-  }
-
-  const labelH = Math.max(1, pos.labelLines.length) * Math.ceil(pos.labelFontSize * 1.32);
-  group.add(
-    new Konva.Text({
-      x: padX,
-      y: curY,
-      width: pos.width - padX * 2,
-      text: pos.labelLines.join("\n"),
-      fontSize: pos.labelFontSize,
-      lineHeight: 1.3,
-      fontStyle: "bold",
-      fontFamily: THEME.fontFamily,
-      fill: THEME.colors.textPrimary,
-    })
-  );
-  curY += labelH + 10;
-
   if (pos.detailLines.length > 0) {
-    group.add(
-      new Konva.Text({
-        x: padX,
-        y: curY,
-        width: pos.width - padX * 2,
-        text: pos.detailLines.join("\n"),
-        fontSize: pos.detailFontSize,
-        lineHeight: 1.3,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.colors.textSecondary,
-      })
-    );
+    const labelH = Math.max(1, pos.labelLines.length) * labelLH;
+    const detailLH = Math.ceil(pos.detailFontSize * 1.3);
+    ctx.font = `${pos.detailFontSize}px ${THEME.fontFamily}`;
+    ctx.fillStyle = palette.textSecondary;
+    pos.detailLines.forEach((line, i) => {
+      ctx.fillText(line, padX, padY + labelH + 8 + i * detailLH, pos.width - padX * 2);
+    });
+  }
+}
+
+function drawCardFast(
+  ctx: CanvasRenderingContext2D,
+  sceneId: string,
+  pos: PositionedItem,
+  index: number,
+  vis: { opacity: number; slideY: number; revealProgress: number; isActive: boolean },
+  accentColor: string,
+  timeMs: number,
+  palette: MotionPalette,
+  template: SceneTemplate,
+  isColumnCard: boolean
+): void {
+  const x = pos.x;
+  const y = pos.y + vis.slideY;
+
+  ctx.save();
+  ctx.globalAlpha = vis.opacity;
+
+  // Breathing outer glow halo when active (pure double stroke, zero slow shadowBlur)
+  if (vis.isActive) {
+    const pulse = 0.5 + 0.5 * Math.sin((timeMs / 1000) * 4.5);
+    ctx.save();
+    roundedRectPath(ctx, x - 2, y - 2, pos.width + 4, pos.height + 4, 16);
+    ctx.strokeStyle = accentColor;
+    ctx.globalAlpha = vis.opacity * (0.16 + pulse * 0.14);
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.restore();
   }
 
-  layer.add(group);
+  const cacheKey = `${sceneId}:${pos.item.id}:${pos.width}x${pos.height}:${palette.name}:${template}:${isColumnCard ? "c" : "r"}:${vis.isActive ? 1 : 0}:${accentColor}:${pos.item.label}:${pos.item.detail}`;
+  let sprite = cardSpriteCache.get(cacheKey);
+  if (!sprite) {
+    const off = createOffscreenCanvas(ctx, Math.ceil(pos.width), Math.ceil(pos.height));
+    if (off) {
+      const octx = off.getContext("2d");
+      if (octx) {
+        renderCardInteriorToCanvas(octx, pos, index, vis.isActive, accentColor, palette, template, isColumnCard);
+        if (cardSpriteCache.size > 400) cardSpriteCache.clear();
+        cardSpriteCache.set(cacheKey, off);
+        sprite = off;
+      }
+    }
+  }
+
+  if (sprite) {
+    ctx.drawImage(sprite, x, y);
+  } else {
+    ctx.save();
+    ctx.translate(x, y);
+    renderCardInteriorToCanvas(ctx, pos, index, vis.isActive, accentColor, palette, template, isColumnCard);
+    ctx.restore();
+  }
+
+  // Animated semantic vector icon chip in top-right corner
+  const cx = x + pos.width - (isColumnCard ? 24 : 26);
+  const cy = y + 30;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+  ctx.fillStyle = vis.isActive ? accentColor : palette.surfaceActive;
+  ctx.globalAlpha = vis.opacity * (vis.isActive ? 0.22 : 0.85);
+  ctx.fill();
+  ctx.strokeStyle = vis.isActive ? accentColor : palette.border;
+  ctx.lineWidth = 1.25;
+  ctx.globalAlpha = vis.opacity * (vis.isActive ? 0.9 : 0.65);
+  ctx.stroke();
+  ctx.globalAlpha = vis.opacity;
+  const iconName = pickIconForText(`${pos.item.badge ?? ""} ${pos.item.label} ${pos.item.detail}`, index);
+  drawVectorIcon(ctx, iconName, cx, cy, 18, accentColor, vis.revealProgress);
+
+  ctx.restore();
 }
 
 /**
- * Pure timestamp-driven Konva renderer shared identically by preview & export.
+ * Pure timestamp-driven Konva motion-graphics renderer shared by live preview & FFmpeg export.
  */
 export function renderSceneAtTime(
   stage: Konva.Stage,
   scene: SceneSpec,
   timeMs: number,
   cues: SentenceCue[],
-  options?: { showCaptions?: boolean; width?: number; height?: number }
+  options?: RenderOptions
 ): void {
   const width = options?.width ?? THEME.width;
   const height = options?.height ?? THEME.height;
   const showCaptions = options?.showCaptions ?? true;
+  const sceneIndex = options?.sceneIndex ?? 0;
+  const sceneTotal = options?.sceneTotal ?? 1;
+  const lastCueEnd = cues.length > 0 ? cues[cues.length - 1].end_ms : 4000;
+  const sceneDurationMs = options?.sceneDurationMs ?? Math.max(4000, lastCueEnd);
+  const palette = resolvePalette(resolveThemeName(options?.theme));
 
   if (stage.width() !== width) stage.width(width);
   if (stage.height() !== height) stage.height(height);
@@ -282,253 +329,220 @@ export function renderSceneAtTime(
   layer.destroyChildren();
 
   const layout = getCachedLayout(scene, width, height);
+  const introP = progressWindow(timeMs, 0, 520);
 
-  // Background
   layer.add(
-    new Konva.Rect({
-      x: 0,
-      y: 0,
-      width,
-      height,
-      fill: THEME.colors.bg,
+    new Konva.Shape({
+      id: "motion-scene",
+      sceneFunc(konvaCtx) {
+        const ctx = rawCanvas2d(konvaCtx);
+
+        // 1. Continuous ambient backdrop + top global progress bar
+        drawMotionBackdrop(ctx, width, height, timeMs, palette);
+        drawGlobalProgressBar(ctx, width, sceneIndex, sceneTotal, timeMs, sceneDurationMs, palette);
+
+        // Header divider line
+        ctx.save();
+        const divGrad = ctx.createLinearGradient(THEME.safeMargin, 0, width - THEME.safeMargin, 0);
+        divGrad.addColorStop(0, palette.accentPrimary);
+        divGrad.addColorStop(0.5, palette.accentSecondary);
+        divGrad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.strokeStyle = divGrad;
+        ctx.lineWidth = 1.6;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(THEME.safeMargin, layout.headerBottom);
+        ctx.lineTo(THEME.safeMargin + (width - THEME.safeMargin * 2) * easeOutCubic(introP), layout.headerBottom);
+        ctx.stroke();
+        ctx.restore();
+
+        // 2. Clean top-right kicker pill
+        const sceneTag = sceneTotal > 1 ? `SCENE ${sceneIndex + 1}/${sceneTotal} · ` : "";
+        const kickerText = `${sceneTag}${templateDisplayName(scene.template)}`;
+        ctx.save();
+        const kx = width - THEME.safeMargin - 216;
+        roundedRectPath(ctx, kx, 34, 216, 34, 8);
+        ctx.fillStyle = palette.surface;
+        ctx.fill();
+        ctx.strokeStyle = palette.border;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.font = `700 ${THEME.badgeFontSize - 1}px ${THEME.fontFamily}`;
+        ctx.fillStyle = palette.accentPrimary;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(kickerText, kx + 108, 51, 200);
+        ctx.restore();
+
+        // 3. Kinetic headline & clean subtitle
+        const titleLH = Math.ceil(THEME.titleFontSize * 1.25);
+        layout.titleLines.forEach((line, idx) => {
+          const lineP = progressWindow(timeMs, idx * 90, 440);
+          drawKineticLine(
+            ctx,
+            line,
+            THEME.safeMargin,
+            34 + idx * titleLH,
+            `700 ${THEME.titleFontSize}px ${THEME.fontFamily}`,
+            palette.textPrimary,
+            lineP
+          );
+        });
+
+        const cleanSub =
+          scene.subtitle && !scene.subtitle.startsWith("Verified note ") ? scene.subtitle : "";
+        if (cleanSub && layout.subtitleLines.length > 0) {
+          const titleH = Math.max(1, layout.titleLines.length) * Math.ceil(THEME.titleFontSize * 1.32);
+          const subLH = Math.ceil(THEME.subtitleFontSize * 1.3);
+          ctx.save();
+          ctx.globalAlpha = easeOutCubic(introP);
+          ctx.font = `${THEME.subtitleFontSize}px ${THEME.fontFamily}`;
+          ctx.fillStyle = palette.textMuted;
+          ctx.textBaseline = "top";
+          layout.subtitleLines.forEach((line, i) => {
+            ctx.fillText(line, THEME.safeMargin, 34 + titleH + 4 + i * subLH, width - THEME.safeMargin * 2);
+          });
+          ctx.restore();
+        }
+
+        // 4. Template-specific motion graphics & cards
+        if (scene.template === "concept_reveal" || scene.template === "recap_ladder") {
+          if (scene.template === "recap_ladder" && layout.positionedItems.length > 1) {
+            for (let idx = 0; idx < layout.positionedItems.length - 1; idx++) {
+              const curr = layout.positionedItems[idx];
+              const next = layout.positionedItems[idx + 1];
+              const nextVis = itemVisibility(idx + 1, layout.positionedItems.length, next.item.cue_index, timeMs, cues);
+              drawConnector(
+                ctx,
+                curr.x + 14,
+                curr.y + curr.height + 2,
+                next.x + 14,
+                next.y - 2,
+                nextVis.revealProgress,
+                timeMs,
+                palette.accentWarm,
+                palette.accentPrimary
+              );
+            }
+          }
+          layout.positionedItems.forEach((pos, idx) => {
+            const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
+            const accent =
+              scene.template === "recap_ladder"
+                ? idx % 2 === 0 ? palette.accentWarm : palette.accentPrimary
+                : vis.isActive ? palette.accentPrimary : palette.accentSecondary;
+            drawCardFast(ctx, scene.scene_id, pos, idx, vis, accent, timeMs, palette, scene.template, false);
+          });
+        } else if (scene.template === "comparison_grid") {
+          layout.positionedItems.forEach((pos, idx) => {
+            const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
+            const colAccent = idx % 2 === 0 ? palette.accentPrimary : palette.accentSecondary;
+            drawCardFast(ctx, scene.scene_id, pos, idx, vis, colAccent, timeMs, palette, scene.template, true);
+          });
+        } else if (scene.template === "process_diagram") {
+          for (let idx = 0; idx < layout.positionedItems.length - 1; idx++) {
+            const pos = layout.positionedItems[idx];
+            const next = layout.positionedItems[idx + 1];
+            const vis = itemVisibility(idx + 1, layout.positionedItems.length, next.item.cue_index, timeMs, cues);
+            const midY = pos.y + Math.floor(pos.height / 2);
+            drawConnector(
+              ctx,
+              pos.x + pos.width + 4,
+              midY,
+              next.x - 4,
+              midY,
+              vis.revealProgress,
+              timeMs,
+              palette.accentPrimary,
+              palette.accentWarm
+            );
+          }
+          layout.positionedItems.forEach((pos, idx) => {
+            const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
+            drawCardFast(ctx, scene.scene_id, pos, idx, vis, palette.accentPrimary, timeMs, palette, scene.template, true);
+          });
+        } else {
+          // timeline
+          const spineY = layout.contentTop + 56;
+          drawConnector(
+            ctx,
+            THEME.safeMargin,
+            spineY,
+            width - THEME.safeMargin,
+            spineY,
+            introP,
+            timeMs,
+            palette.accentSecondary,
+            palette.accentWarm
+          );
+
+          layout.positionedItems.forEach((pos, idx) => {
+            const vis = itemVisibility(idx, layout.positionedItems.length, pos.item.cue_index, timeMs, cues);
+            const centerX = pos.x + Math.floor(pos.width / 2);
+
+            ctx.save();
+            if (vis.isActive) {
+              const haloR = 14 + 4 * Math.sin((timeMs / 1000) * 5);
+              ctx.globalAlpha = 0.28;
+              ctx.fillStyle = palette.accentWarm;
+              ctx.beginPath();
+              ctx.arc(centerX, spineY, haloR, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.globalAlpha = Math.max(0.4, vis.opacity);
+            ctx.fillStyle = vis.isActive ? palette.accentWarm : palette.accentPrimary;
+            ctx.beginPath();
+            ctx.arc(centerX, spineY, vis.isActive ? 10 : 7.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = palette.bgStart;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.globalAlpha = Math.max(0.25, vis.opacity);
+            ctx.strokeStyle = vis.isActive ? palette.accentWarm : palette.border;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX, spineY + 10);
+            ctx.lineTo(centerX, pos.y + vis.slideY);
+            ctx.stroke();
+
+            if (pos.item.badge) {
+              ctx.globalAlpha = Math.max(0.35, vis.opacity);
+              ctx.font = `700 ${THEME.labelFontSize}px ${THEME.fontFamily}`;
+              ctx.fillStyle = vis.isActive ? palette.accentWarm : palette.accentPrimary;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              ctx.fillText(pos.item.badge, centerX, spineY - 38, pos.width);
+            }
+            ctx.restore();
+
+            drawCardFast(ctx, scene.scene_id, pos, idx, vis, palette.accentWarm, timeMs, palette, scene.template, true);
+          });
+        }
+
+        // 5. Caption bar when live preview captions are enabled
+        if (showCaptions) {
+          const caption = activeCueText(timeMs, cues);
+          if (caption) {
+            const capY = height - THEME.captionZoneHeight + 8;
+            ctx.save();
+            roundedRectPath(ctx, THEME.safeMargin, capY, width - THEME.safeMargin * 2, 62, 10);
+            ctx.fillStyle = palette.captionBg;
+            ctx.fill();
+            ctx.strokeStyle = palette.borderActive;
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            ctx.font = `18px ${THEME.fontFamily}`;
+            ctx.fillStyle = "#f8fafc";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(caption, width / 2, capY + 32, width - THEME.safeMargin * 2 - 32);
+            ctx.restore();
+          }
+        }
+      },
     })
   );
-  layer.add(
-    new Konva.Rect({
-      x: 0,
-      y: 0,
-      width,
-      height: layout.headerBottom,
-      fill: THEME.colors.bgTopGlow,
-    })
-  );
-  layer.add(
-    new Konva.Line({
-      points: [THEME.safeMargin, layout.headerBottom, width - THEME.safeMargin, layout.headerBottom],
-      stroke: THEME.colors.surfaceBorder,
-      strokeWidth: 1.5,
-    })
-  );
-
-  // Title & subtitle
-  layer.add(
-    new Konva.Text({
-      x: THEME.safeMargin,
-      y: 34,
-      width: width - THEME.safeMargin * 2 - 230,
-      text: layout.titleLines.join("\n"),
-      fontSize: THEME.titleFontSize,
-      lineHeight: 1.25,
-      fontStyle: "bold",
-      fontFamily: THEME.fontFamily,
-      fill: THEME.colors.textPrimary,
-    })
-  );
-
-  if (layout.subtitleLines.length > 0) {
-    const titleH =
-      Math.max(1, layout.titleLines.length) * Math.ceil(THEME.titleFontSize * 1.32);
-    layer.add(
-      new Konva.Text({
-        x: THEME.safeMargin,
-        y: 34 + titleH + 4,
-        width: width - THEME.safeMargin * 2,
-        text: layout.subtitleLines.join("\n"),
-        fontSize: THEME.subtitleFontSize,
-        lineHeight: 1.3,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.colors.textMuted,
-      })
-    );
-  }
-
-  // Note ID & Source Ref badge in top-right
-  const metaBadgeText = [
-    scene.note_point_ids.join(", "),
-    scene.source_refs.slice(0, 2).join(", "),
-  ]
-    .filter(Boolean)
-    .join(" | ");
-  if (metaBadgeText) {
-    layer.add(
-      new Konva.Rect({
-        x: width - THEME.safeMargin - 218,
-        y: 34,
-        width: 218,
-        height: 36,
-        cornerRadius: 8,
-        fill: THEME.colors.surface,
-        stroke: THEME.colors.surfaceBorder,
-        strokeWidth: 1,
-      })
-    );
-    layer.add(
-      new Konva.Text({
-        x: width - THEME.safeMargin - 210,
-        y: 42,
-        width: 202,
-        align: "center",
-        text: metaBadgeText,
-        fontSize: THEME.badgeFontSize,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.colors.accent,
-        ellipsis: true,
-        wrap: "none",
-      })
-    );
-  }
-
-  // Template rendering
-  if (scene.template === "concept_reveal") {
-    layout.positionedItems.forEach((pos, idx) => {
-      const vis = itemVisibility(
-        idx,
-        layout.positionedItems.length,
-        pos.item.cue_index,
-        timeMs,
-        cues
-      );
-      drawConceptItem(layer!, pos, vis);
-    });
-  } else if (scene.template === "process_diagram") {
-    layout.positionedItems.forEach((pos, idx) => {
-      const vis = itemVisibility(
-        idx,
-        layout.positionedItems.length,
-        pos.item.cue_index,
-        timeMs,
-        cues
-      );
-      drawColumnCard(layer!, pos, vis, THEME.colors.accent);
-      if (idx < layout.positionedItems.length - 1) {
-        const next = layout.positionedItems[idx + 1];
-        const midY = pos.y + Math.floor(pos.height / 2);
-        layer!.add(
-          new Konva.Arrow({
-            points: [pos.x + pos.width + 4, midY, next.x - 4, midY],
-            pointerLength: 9,
-            pointerWidth: 9,
-            fill: THEME.colors.accent,
-            stroke: THEME.colors.accent,
-            strokeWidth: 3,
-            opacity: Math.max(0.25, vis.opacity),
-          })
-        );
-      }
-    });
-  } else {
-    // timeline
-    const spineY = layout.contentTop + 56;
-    layer.add(
-      new Konva.Line({
-        points: [THEME.safeMargin, spineY, width - THEME.safeMargin, spineY],
-        stroke: THEME.colors.surfaceBorder,
-        strokeWidth: 4,
-      })
-    );
-
-    layout.positionedItems.forEach((pos, idx) => {
-      const vis = itemVisibility(
-        idx,
-        layout.positionedItems.length,
-        pos.item.cue_index,
-        timeMs,
-        cues
-      );
-      const centerX = pos.x + Math.floor(pos.width / 2);
-
-      // Node dot on spine
-      layer!.add(
-        new Konva.Circle({
-          x: centerX,
-          y: spineY,
-          radius: vis.isActive ? 11 : 8,
-          fill: vis.isActive ? THEME.colors.amber : THEME.colors.accent,
-          stroke: THEME.colors.bg,
-          strokeWidth: 2,
-          opacity: Math.max(0.35, vis.opacity),
-        })
-      );
-
-      // Connector stem from spine down to card
-      layer!.add(
-        new Konva.Line({
-          points: [centerX, spineY + 10, centerX, pos.y + vis.slideY],
-          stroke: vis.isActive ? THEME.colors.amber : THEME.colors.surfaceBorder,
-          strokeWidth: 2,
-          opacity: Math.max(0.25, vis.opacity),
-        })
-      );
-
-      // Era badge above spine
-      if (pos.item.badge) {
-        layer!.add(
-          new Konva.Text({
-            x: pos.x,
-            y: spineY - 38,
-            width: pos.width,
-            align: "center",
-            text: pos.item.badge,
-            fontSize: THEME.labelFontSize,
-            fontStyle: "bold",
-            fontFamily: THEME.fontFamily,
-            fill: vis.isActive ? THEME.colors.amber : THEME.colors.accent,
-            opacity: Math.max(0.35, vis.opacity),
-          })
-        );
-      }
-
-      drawColumnCard(layer!, pos, vis, THEME.colors.amber);
-    });
-  }
-
-  // Caption bar (when enabled for live preview)
-  if (showCaptions) {
-    const caption = activeCueText(timeMs, cues);
-    if (caption) {
-      const capY = height - THEME.captionZoneHeight + 8;
-      layer.add(
-        new Konva.Rect({
-          x: THEME.safeMargin,
-          y: capY,
-          width: width - THEME.safeMargin * 2,
-          height: 62,
-          cornerRadius: 10,
-          fill: "#090e1c",
-          opacity: 0.92,
-          stroke: THEME.colors.captionBorder,
-          strokeWidth: 1,
-        })
-      );
-      layer.add(
-        new Konva.Text({
-          x: THEME.safeMargin + 16,
-          y: capY + 10,
-          width: width - THEME.safeMargin * 2 - 32,
-          height: 44,
-          align: "center",
-          verticalAlign: "middle",
-          text: caption,
-          fontSize: 18,
-          lineHeight: 1.25,
-          fontFamily: THEME.fontFamily,
-          fill: THEME.colors.textPrimary,
-        })
-      );
-    }
-  } else if (scene.footer_note) {
-    layer.add(
-      new Konva.Text({
-        x: THEME.safeMargin,
-        y: height - 40,
-        width: width - THEME.safeMargin * 2,
-        text: `${scene.footer_note} · Sources: ${scene.source_refs.join(", ")}`,
-        fontSize: THEME.footerFontSize,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.colors.textMuted,
-      })
-    );
-  }
 
   layer.draw();
 }

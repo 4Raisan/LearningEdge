@@ -1,4 +1,9 @@
-export type SceneTemplate = "concept_reveal" | "process_diagram" | "timeline";
+export type SceneTemplate =
+  | "concept_reveal"
+  | "process_diagram"
+  | "timeline"
+  | "comparison_grid"
+  | "recap_ladder";
 
 export interface SentenceCue {
   sentence_index: number;

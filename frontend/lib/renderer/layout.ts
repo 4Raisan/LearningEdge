@@ -137,7 +137,10 @@ function measureConceptCard(
   const badgeReserve = badgeText
     ? Math.min(220, Math.ceil(measureTextWidth(badgeText, badgeFontSize, "700", ctx)) + 30)
     : 0;
-  const labelWidth = Math.max(180, cardWidth - padX * 2 - (badgeReserve > 0 ? badgeReserve + 14 : 0));
+  const labelWidth = Math.max(
+    180,
+    cardWidth - padX * 2 - (badgeReserve > 0 ? badgeReserve + 14 : 0) - 44
+  );
   const detailWidth = cardWidth - padX * 2;
 
   const badgeLines = badgeText ? [badgeText] : [];
@@ -169,7 +172,7 @@ function measureColumnCard(
   const innerW = Math.max(120, cardWidth - padX * 2);
 
   const badgeLines = item.badge
-    ? wrapTextLines(item.badge, innerW - 16, badgeFontSize, "700", ctx)
+    ? wrapTextLines(item.badge, Math.max(96, innerW - 56), badgeFontSize, "700", ctx)
     : [];
   const labelLines = wrapTextLines(item.label, innerW, labelFontSize, "700", ctx);
   const detailLines = wrapTextLines(item.detail, innerW, detailFontSize, "normal", ctx);
@@ -238,7 +241,7 @@ export function computeSceneLayout(
   const fontSizes: number[] = [THEME.titleFontSize, THEME.subtitleFontSize, THEME.footerFontSize];
   const positionedItems: PositionedItem[] = [];
 
-  if (scene.template === "concept_reveal") {
+  if (scene.template === "concept_reveal" || scene.template === "recap_ladder") {
     const gap = 14;
     let curY = contentTop;
     for (const item of scene.items) {
@@ -267,6 +270,55 @@ export function computeSceneLayout(
       });
       fontSizes.push(THEME.badgeFontSize, THEME.labelFontSize, THEME.detailFontSize);
       curY += m.height + gap;
+    }
+  } else if (scene.template === "comparison_grid") {
+    const cols = innerW >= 820 && scene.items.length >= 2 ? 2 : 1;
+    const colGap = 20;
+    const rowGap = 16;
+    const colW = Math.floor((innerW - colGap * (cols - 1)) / cols);
+    let curY = contentTop;
+
+    for (let i = 0; i < scene.items.length; i += cols) {
+      const rowItems = scene.items.slice(i, i + cols);
+      const measured = rowItems.map((item) =>
+        measureColumnCard(
+          item,
+          colW,
+          THEME.badgeFontSize,
+          THEME.labelFontSize,
+          THEME.detailFontSize,
+          ctx
+        )
+      );
+      const rowH = Math.max(132, ...measured.map((m) => m.height));
+      rowItems.forEach((item, c) => {
+        const m = measured[c];
+        const x = THEME.safeMargin + c * (colW + colGap);
+        positionedItems.push({
+          item,
+          x,
+          y: curY,
+          width: colW,
+          height: rowH,
+          badgeLines: m.badgeLines,
+          labelLines: m.labelLines,
+          detailLines: m.detailLines,
+          badgeFontSize: THEME.badgeFontSize,
+          labelFontSize: THEME.labelFontSize,
+          detailFontSize: THEME.detailFontSize,
+        });
+        boundingBoxes.push({
+          id: item.id,
+          kind: "card",
+          x,
+          y: curY,
+          width: colW,
+          height: rowH,
+          font_size: THEME.detailFontSize,
+        });
+        fontSizes.push(THEME.badgeFontSize, THEME.labelFontSize, THEME.detailFontSize);
+      });
+      curY += rowH + rowGap;
     }
   } else if (scene.template === "process_diagram") {
     const count = Math.max(1, scene.items.length);
@@ -535,7 +587,7 @@ export function paginateScene(
 
   const groups: SceneItem[][] = [];
 
-  if (scene.template === "concept_reveal") {
+  if (scene.template === "concept_reveal" || scene.template === "recap_ladder") {
     const gap = 14;
     let currentGroup: SceneItem[] = [];
     let currentH = 0;
@@ -551,6 +603,47 @@ export function paginateScene(
       } else {
         currentGroup.push(item);
         currentH = nextH;
+      }
+    }
+    if (currentGroup.length > 0) {
+      groups.push(currentGroup);
+    }
+  } else if (scene.template === "comparison_grid") {
+    const cols = innerW >= 820 ? 2 : 1;
+    const colGap = 20;
+    const rowGap = 16;
+    const colW = Math.floor((innerW - colGap * (cols - 1)) / cols);
+    const measureGroupHeight = (items: SceneItem[]): number => {
+      let total = 0;
+      for (let i = 0; i < items.length; i += cols) {
+        const row = items.slice(i, i + cols);
+        const rowH = Math.max(
+          132,
+          ...row.map(
+            (c) =>
+              measureColumnCard(
+                c,
+                colW,
+                THEME.badgeFontSize,
+                THEME.labelFontSize,
+                THEME.detailFontSize,
+                ctx
+              ).height
+          )
+        );
+        total += (i === 0 ? 0 : rowGap) + rowH;
+      }
+      return total;
+    };
+
+    let currentGroup: SceneItem[] = [];
+    for (const item of scene.items) {
+      const candidate = [...currentGroup, item];
+      if (currentGroup.length > 0 && measureGroupHeight(candidate) > availableH) {
+        groups.push(currentGroup);
+        currentGroup = [item];
+      } else {
+        currentGroup = candidate;
       }
     }
     if (currentGroup.length > 0) {

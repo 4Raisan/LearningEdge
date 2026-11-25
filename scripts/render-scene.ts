@@ -15,6 +15,9 @@ interface RenderJobInput {
   frame_count: number;
   width?: number;
   height?: number;
+  theme?: string;
+  scene_index?: number;
+  scene_total?: number;
   output_mp4: string;
   ffmpeg_path?: string;
   show_captions?: boolean;
@@ -145,7 +148,9 @@ async function runRender(inputPath: string) {
     "-c:v",
     "libx264",
     "-preset",
-    "veryfast",
+    "superfast",
+    "-threads",
+    "2",
     "-pix_fmt",
     "yuv420p",
     "-r",
@@ -183,79 +188,33 @@ async function runRender(inputPath: string) {
   }
 
   const totalFrames = Math.max(1, job.frame_count);
-  let lastSteadyKey: string | null = null;
-  let lastFrameBuf: Buffer | null = null;
-
-  const getSteadyVisualKey = (timeMs: number): string | null => {
-    if (job.cues.length === 0) {
-      const endAnimMs = Math.max(0, job.scene.items.length - 1) * 350 + 300;
-      return timeMs > endAnimMs ? "static-nocues" : null;
-    }
-    for (const cue of job.cues) {
-      if (timeMs >= cue.start_ms && timeMs <= cue.start_ms + 300) {
-        return null; // Inside ease-out reveal animation window
-      }
-    }
-    const states = job.cues.map((c) => {
-      if (timeMs < c.start_ms) return "0";
-      if (timeMs <= c.end_ms) return "A";
-      return "D";
-    });
-    return `${showCaptions ? "cap" : "nocap"}:${states.join("")}`;
+  const sceneDurationMs = (totalFrames / fps) * 1000;
+  const renderOpts = {
+    showCaptions,
+    width,
+    height,
+    theme: job.theme,
+    sceneIndex: job.scene_index ?? 0,
+    sceneTotal: job.scene_total ?? 1,
+    sceneDurationMs,
   };
 
   for (let frame = 0; frame < totalFrames; frame++) {
     const timeMs = (frame / fps) * 1000;
-    const steadyKey = getSteadyVisualKey(timeMs);
-    let buf: Buffer;
-    let canvasEl: {
+    renderSceneAtTime(stage, job.scene, timeMs, job.cues, renderOpts);
+
+    const canvasEl = layer.getNativeCanvasElement() as unknown as {
       getContext: (id: "2d") => CanvasRenderingContext2D;
       toBuffer?: (mime: string) => Buffer;
-    } | null = null;
-
-    if (steadyKey !== null && steadyKey === lastSteadyKey && lastFrameBuf !== null) {
-      buf = lastFrameBuf;
-    } else {
-      renderSceneAtTime(stage, job.scene, timeMs, job.cues, {
-        showCaptions,
-        width,
-        height,
-      });
-
-      canvasEl = layer.getNativeCanvasElement() as unknown as {
-        getContext: (id: "2d") => CanvasRenderingContext2D;
-        toBuffer?: (mime: string) => Buffer;
-      };
-      const ctx = canvasEl.getContext("2d");
-      const img = ctx.getImageData(0, 0, width, height);
-      buf = Buffer.from(img.data.buffer, img.data.byteOffset, img.data.byteLength);
-      if (steadyKey !== null) {
-        lastSteadyKey = steadyKey;
-        lastFrameBuf = Buffer.from(buf);
-      } else {
-        lastSteadyKey = null;
-        lastFrameBuf = null;
-      }
-    }
+    };
+    const img = canvasEl.getContext("2d").getImageData(0, 0, width, height);
+    const buf = Buffer.from(img.data.buffer, img.data.byteOffset, img.data.byteLength);
 
     await writeChunk(proc.stdin, buf);
 
-    if (job.snapshot_dir && snapshotFrames.has(frame)) {
-      if (!canvasEl) {
-        renderSceneAtTime(stage, job.scene, timeMs, job.cues, {
-          showCaptions,
-          width,
-          height,
-        });
-        canvasEl = layer.getNativeCanvasElement() as unknown as {
-          getContext: (id: "2d") => CanvasRenderingContext2D;
-          toBuffer?: (mime: string) => Buffer;
-        };
-      }
-      if (canvasEl.toBuffer) {
-        const pngPath = path.join(job.snapshot_dir, `${job.scene.scene_id}_f${frame}.png`);
-        await fs.writeFile(pngPath, canvasEl.toBuffer("image/png"));
-      }
+    if (job.snapshot_dir && snapshotFrames.has(frame) && canvasEl.toBuffer) {
+      const pngPath = path.join(job.snapshot_dir, `${job.scene.scene_id}_f${frame}.png`);
+      await fs.writeFile(pngPath, canvasEl.toBuffer("image/png"));
     }
   }
 
