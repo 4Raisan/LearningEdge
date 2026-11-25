@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildObsidianGraph,
+  computeClusteredPositions,
+  filterObsidianGraph,
+} from "../frontend/lib/knowledgeGraphTheme";
+import {
   AI_KNOWLEDGE_DOMAIN,
   CPU_CACHE_DOMAIN,
   convertSnapshotToDomain,
@@ -158,5 +163,143 @@ describe("Knowledge Graph - Snapshot Converter", () => {
     expect(n0.category).toBe("central");
     expect(n0.videoStartMs).toBe(12000);
     expect(n0.videoEndMs).toBe(36000);
+  });
+
+  it("builds degree-scaled, cluster-colored Obsidian graph data and drops orphan edges", () => {
+    const snapshot: KnowledgeGraphSnapshot = {
+      concepts: [
+        {
+          id: "c1",
+          label: "Git Commits",
+          summary: "Immutable snapshots of tracked project state.",
+          aliases: [],
+          links: [{ id: "l1", lecture_id: "lec-git", source_refs: ["s1"] }],
+        },
+        {
+          id: "c2",
+          label: "Staging Area",
+          summary: "Index holding changes queued for the next commit.",
+          aliases: [],
+          links: [{ id: "l2", lecture_id: "lec-git", source_refs: ["s2"] }],
+        },
+        {
+          id: "c3",
+          label: "Branch Pointers",
+          summary: "Lightweight movable references to commits.",
+          aliases: [],
+          links: [{ id: "l3", lecture_id: "lec-branches", source_refs: ["s3"] }],
+        },
+        {
+          id: "c4",
+          label: "Merge Conflicts",
+          summary: "Divergent edits requiring resolution.",
+          aliases: [],
+          links: [{ id: "l4", lecture_id: "lec-git", source_refs: ["s4"] }],
+        },
+      ],
+      edges: [
+        { id: "e1", from_concept_id: "c1", to_concept_id: "c2", relation: "depends_on", supporting_sources: [] },
+        { id: "e2", from_concept_id: "c1", to_concept_id: "c3", relation: "leads_to", supporting_sources: [] },
+        { id: "e3", from_concept_id: "c1", to_concept_id: "c4", relation: "related_to", supporting_sources: [] },
+        { id: "e-orphan", from_concept_id: "c1", to_concept_id: "missing-node", relation: "leads_to", supporting_sources: [] },
+      ],
+      dream_suggestions: [],
+    };
+
+    const graph = buildObsidianGraph(snapshot);
+
+    expect(graph.edges).toHaveLength(3);
+    expect(graph.edges.every((e) => e.data.id !== "e-orphan")).toBe(true);
+    expect(graph.edges[0].data.label).toBe("depends on");
+
+    const hub = graph.nodes.find((n) => n.data.id === "c1")!;
+    const leaf = graph.nodes.find((n) => n.data.id === "c2")!;
+    const branchNode = graph.nodes.find((n) => n.data.id === "c3")!;
+
+    expect(hub.data.degree).toBe(3);
+    expect(hub.data.isHub).toBe(true);
+    expect(hub.data.size).toBeGreaterThan(leaf.data.size);
+    expect(hub.data.color).toBe(leaf.data.color);
+    expect(branchNode.data.color).not.toBe(hub.data.color);
+    expect(graph.legend).toHaveLength(2);
+  });
+
+  it("handles large multi-subject graphs with island packing, subject filtering, and dense local hops", () => {
+    const subjects = [
+      { id: "sub-git", name: "GitHub Workflows" },
+      { id: "sub-cpu", name: "CPU Caching" },
+      { id: "sub-rust", name: "Rust Ownership" },
+      { id: "sub-db", name: "SQLite Indexing" },
+      { id: "sub-net", name: "TCP Congestion" },
+    ];
+    const concepts: KnowledgeGraphSnapshot["concepts"] = [];
+    const edges: KnowledgeGraphSnapshot["edges"] = [];
+
+    for (const sub of subjects) {
+      for (let i = 0; i < 24; i++) {
+        const cid = `${sub.id}-n${i}`;
+        concepts.push({
+          id: cid,
+          label: i === 0 ? sub.name : `${sub.name} Node ${i}`,
+          summary: `Detailed concept ${i} under ${sub.name}`,
+          aliases: [],
+          links: [{ id: `lnk-${cid}`, lecture_id: `lecture-${sub.id}-uuid-0001`, source_refs: [`s-${i}`] }],
+        });
+        if (i > 0 && i <= 10) {
+          edges.push({
+            id: `edge-${sub.id}-hub-${i}`,
+            from_concept_id: `${sub.id}-n0`,
+            to_concept_id: cid,
+            relation: "contains",
+            supporting_sources: [],
+          });
+        } else if (i > 10) {
+          const parentIdx = ((i - 11) % 10) + 1;
+          edges.push({
+            id: `edge-${sub.id}-sub-${i}`,
+            from_concept_id: `${sub.id}-n${parentIdx}`,
+            to_concept_id: cid,
+            relation: "depends_on",
+            supporting_sources: [],
+          });
+        }
+      }
+    }
+    edges.push({
+      id: "dangling-edge",
+      from_concept_id: "sub-git-n0",
+      to_concept_id: "nonexistent-concept",
+      relation: "related_to",
+      supporting_sources: [],
+    });
+
+    const full = buildObsidianGraph({ concepts, edges, dream_suggestions: [] });
+    expect(full.nodes).toHaveLength(120);
+    expect(full.edges).toHaveLength(115);
+    expect(full.legend).toHaveLength(5);
+    expect(new Set(full.legend.map((l) => l.color)).size).toBe(5);
+    expect(full.legend.some((l) => l.label === "GitHub Workflows")).toBe(true);
+
+    const positions = computeClusteredPositions(full.nodes, full.edges);
+    expect(Object.keys(positions)).toHaveLength(120);
+    const hubCoords = subjects.map((s) => positions[`${s.id}-n0`]);
+    for (let i = 0; i < hubCoords.length; i++) {
+      expect(Number.isFinite(hubCoords[i].x)).toBe(true);
+      expect(Number.isFinite(hubCoords[i].y)).toBe(true);
+      for (let j = i + 1; j < hubCoords.length; j++) {
+        const dist = Math.hypot(hubCoords[i].x - hubCoords[j].x, hubCoords[i].y - hubCoords[j].y);
+        expect(dist).toBeGreaterThan(250);
+      }
+    }
+
+    const gitClusterId = full.nodes.find((n) => n.data.id === "sub-git-n0")!.data.clusterId;
+    const onlyGit = filterObsidianGraph(full, { subjectId: gitClusterId, localDepth: "all" });
+    expect(onlyGit.nodes).toHaveLength(24);
+    expect(onlyGit.edges).toHaveLength(23);
+
+    const oneHop = filterObsidianGraph(full, { subjectId: gitClusterId, focusId: "sub-git-n0", localDepth: 1 });
+    expect(oneHop.nodes).toHaveLength(11);
+    const twoHop = filterObsidianGraph(full, { subjectId: gitClusterId, focusId: "sub-git-n0", localDepth: 2 });
+    expect(twoHop.nodes).toHaveLength(24);
   });
 });
