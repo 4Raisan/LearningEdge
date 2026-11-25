@@ -1,5 +1,7 @@
-pub mod narration;
+pub mod edge_tts;
 pub mod model_audio;
+pub mod narration;
+pub mod sfx;
 pub mod text;
 pub mod transcription;
 
