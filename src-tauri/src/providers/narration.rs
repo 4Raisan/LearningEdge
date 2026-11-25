@@ -17,6 +17,19 @@ pub trait NarrationProvider: Send + Sync {
         voice: &str,
         rate: i32,
     ) -> Result<SceneAudioResult>;
+
+    async fn synthesize_scene_with_context(
+        &self,
+        scene_id: &str,
+        _scene_index: usize,
+        sentences: &[String],
+        out_wav_path: &Path,
+        voice: &str,
+        rate: i32,
+    ) -> Result<SceneAudioResult> {
+        self.synthesize_scene(scene_id, sentences, out_wav_path, voice, rate)
+            .await
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
