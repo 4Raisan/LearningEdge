@@ -28,7 +28,10 @@ def hydrogen(prompt, data, cwd):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("lecture", type=Path)
+    parser.add_argument("--script-only", action="store_true", help="Save the reviewed Hydrogen script")
     args = parser.parse_args()
+    if not args.script_only:
+        parser.error("This Hydrogen CLI connection returns text. Use --script-only for authoring; native model audio is required for video export.")
     source = args.lecture.read_text(encoding="utf-8-sig").strip()
     if not source:
         parser.error("Lecture file is empty.")
@@ -54,12 +57,7 @@ def main():
     fixture = out / "script.json"
     fixture.write_text(json.dumps(dict(lecture_id=run_id, title=script["title"],
                                        segments=segments)), encoding="utf-8")
-    cargo = shutil.which("cargo") or str(Path.home() / ".cargo/bin/cargo")
-    subprocess.run([cargo, "run", "--manifest-path", "src-tauri/Cargo.toml", "--bin",
-                    "pipeline_cli", "--", "--fixture", str(fixture), "--out", str(out)],
-                   cwd=root, check=True)
-    manifest = json.loads((out / "latest/video_manifest.json").read_text(encoding="utf-8"))
-    print(manifest["video_path"])
+    print(fixture)
 
 
 if __name__ == "__main__":
