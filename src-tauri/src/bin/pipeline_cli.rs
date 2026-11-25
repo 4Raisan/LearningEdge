@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use learningedge_lib::{
     db, kg,
-    models::{PresetConfig, TranscriptFixture},
+    models::{PresetConfig, StageProviderKind, ThinkingLevel, TranscriptFixture},
     pipeline::{
         orchestrator::{create_pipeline_run, load_run_artifacts_bundle},
         render::ffprobe_media_json,
@@ -11,6 +11,29 @@ use learningedge_lib::{
 };
 use std::path::PathBuf;
 use std::time::Duration;
+
+fn parse_provider(raw: &str) -> Result<StageProviderKind> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "local_offline" | "local" => Ok(StageProviderKind::LocalOffline),
+        "ollama" => Ok(StageProviderKind::Ollama),
+        "codex_cli" | "codex" => Ok(StageProviderKind::CodexCli),
+        "antigravity" | "agy" => Ok(StageProviderKind::Antigravity),
+        "open_ai" | "openai" => Ok(StageProviderKind::OpenAi),
+        "gemini" => Ok(StageProviderKind::Gemini),
+        other => Err(anyhow!("Unknown provider: {other}")),
+    }
+}
+
+fn parse_thinking(raw: &str) -> Result<ThinkingLevel> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "off" => Ok(ThinkingLevel::Off),
+        "low" => Ok(ThinkingLevel::Low),
+        "medium" => Ok(ThinkingLevel::Medium),
+        "high" => Ok(ThinkingLevel::High),
+        "xhigh" => Ok(ThinkingLevel::Xhigh),
+        other => Err(anyhow!("Unknown thinking level: {other}")),
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -27,6 +50,13 @@ async fn main() -> Result<()> {
     let mut fixture = default_fixture.clone();
     let mut slides = None;
     let mut out_root = tools.project_root.join("artifacts").join("cli-run");
+    let mut provider_arg: Option<StageProviderKind> = None;
+    let mut model_arg: Option<String> = None;
+    let mut thinking_arg: Option<ThinkingLevel> = None;
+    let mut voice_arg: Option<String> = None;
+    let mut theme_arg: Option<String> = None;
+    let mut resume_run_id: Option<String> = None;
+    let mut timeout_secs: u64 = 360;
 
     let mut i = 1;
     while i < args.len() {
@@ -43,10 +73,42 @@ async fn main() -> Result<()> {
                 out_root = PathBuf::from(&args[i + 1]);
                 i += 2;
             }
+            "--provider" if i + 1 < args.len() => {
+                provider_arg = Some(parse_provider(&args[i + 1])?);
+                i += 2;
+            }
+            "--model" if i + 1 < args.len() => {
+                model_arg = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--thinking" if i + 1 < args.len() => {
+                thinking_arg = Some(parse_thinking(&args[i + 1])?);
+                i += 2;
+            }
+            "--voice" if i + 1 < args.len() => {
+                voice_arg = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--theme" if i + 1 < args.len() => {
+                theme_arg = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--resume-run" if i + 1 < args.len() => {
+                resume_run_id = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--timeout" if i + 1 < args.len() => {
+                timeout_secs = args[i + 1].parse()?;
+                i += 2;
+            }
             other => {
                 return Err(anyhow!("Unknown CLI argument: {other}"));
             }
         }
+    }
+
+    if out_root.is_relative() {
+        out_root = std::env::current_dir()?.join(out_root);
     }
 
     if fixture == default_fixture && slides.is_none() {
@@ -58,9 +120,40 @@ async fn main() -> Result<()> {
     let pool = db::init_db(&db_path).await?;
     let worker_handle = spawn_pipeline_worker(pool.clone(), tools.clone());
 
-    let preset = PresetConfig::default();
+    let mut preset = PresetConfig::default();
+    if let Some(provider) = provider_arg {
+        let model = model_arg.unwrap_or_else(|| "gemini-3.8-flash".to_string());
+        let thinking = thinking_arg.unwrap_or(ThinkingLevel::High);
+        preset.offline_only = matches!(
+            provider,
+            StageProviderKind::LocalOffline | StageProviderKind::Ollama
+        );
+        for stage in [
+            &mut preset.notes_stage,
+            &mut preset.verify_stage,
+            &mut preset.scene_plan_stage,
+            &mut preset.coverage_stage,
+            &mut preset.dreaming_stage,
+        ] {
+            stage.provider = provider.clone();
+            stage.model = model.clone();
+            stage.thinking = thinking.clone();
+        }
+    }
+    if let Some(voice) = voice_arg {
+        preset.narration_voice = voice;
+    }
+    if let Some(theme) = theme_arg {
+        preset.video_theme = theme;
+    }
+
     let run_dir = out_root.join("latest");
-    let run_id = create_pipeline_run(&pool, &source.lecture_id, &preset, &run_dir, None).await?;
+    let run_id = if let Some(existing_id) = resume_run_id {
+        db::update_run_status(&pool, &existing_id, "queued", None, None, None, None).await?;
+        existing_id
+    } else {
+        create_pipeline_run(&pool, &source.lecture_id, &preset, &run_dir, None).await?
+    };
 
     enqueue_pipeline_job(
         &pool,
@@ -72,7 +165,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    let final_rec = wait_for_run_terminal(&pool, &run_id, Duration::from_secs(180)).await?;
+    let final_rec = wait_for_run_terminal(&pool, &run_id, Duration::from_secs(timeout_secs)).await?;
     let bundle = load_run_artifacts_bundle(&pool, &run_id).await?;
 
     if let Some(ref notes) = bundle.verified_notes {
