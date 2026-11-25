@@ -3,6 +3,8 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::credentials;
 use crate::models::{
@@ -87,11 +89,24 @@ fn extract_key_terms(title: &str, text: &str) -> Vec<String> {
 }
 
 fn split_sentences(text: &str) -> Vec<String> {
-    text.split(['.', '!', '?'])
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("{s}."))
-        .collect()
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        cur.push(ch);
+        if matches!(ch, '.' | '!' | '?') && chars.peek().is_none_or(|n| n.is_whitespace()) {
+            let trimmed = cur.trim();
+            if !trimmed.is_empty() {
+                out.push(trimmed.to_string());
+            }
+            cur.clear();
+        }
+    }
+    let tail = cur.trim();
+    if !tail.is_empty() {
+        out.push(format!("{tail}."));
+    }
+    out
 }
 
 fn infer_template(title: &str, text: &str) -> SceneTemplate {
@@ -303,6 +318,8 @@ impl TextStageProvider for LocalDeterministicProvider {
                     let items = sentences.iter().enumerate().map(|(i, sentence)| SceneItem {
                         id: format!("{scene_id}-{}", i + 1),
                         badge: Some((i + 1).to_string()),
+                        icon: None,
+                        stat: None,
                         label: pt.title.clone(),
                         detail: sentence.clone(),
                         cue_index: Some(i),
@@ -319,6 +336,8 @@ impl TextStageProvider for LocalDeterministicProvider {
                     let mut items = vec![SceneItem {
                         id: format!("{scene_id}-def"),
                         badge: Some(first_badge.to_string()),
+                        icon: None,
+                        stat: None,
                         label: pt.title.clone(),
                         detail: pt.definition.clone(),
                         cue_index: Some(0),
@@ -334,6 +353,8 @@ impl TextStageProvider for LocalDeterministicProvider {
                                 SceneTemplate::RecapLadder => "Takeaway 2",
                                 _ => "Mechanism",
                             }.to_string()),
+                            icon: None,
+                            stat: None,
                             label: "Why & How It Works".to_string(),
                             detail: pt.reasoning.clone(),
                             cue_index: Some(cue),
@@ -350,6 +371,8 @@ impl TextStageProvider for LocalDeterministicProvider {
                                     SceneTemplate::RecapLadder => "Watch Out",
                                     _ => "Caveat",
                                 }.to_string()),
+                                icon: None,
+                                stat: None,
                                 label: "Important Qualification".to_string(),
                                 detail: q.clone(),
                                 cue_index: Some(cue),
@@ -366,6 +389,8 @@ impl TextStageProvider for LocalDeterministicProvider {
                                     SceneTemplate::RecapLadder => "Anchor",
                                     _ => "Example",
                                 }.to_string()),
+                                icon: None,
+                                stat: None,
                                 label: "In practice".into(),
                                 detail: example.clone(),
                                 cue_index: Some(cue),
@@ -383,6 +408,67 @@ impl TextStageProvider for LocalDeterministicProvider {
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(" · ");
+            let (visual, visual_layout) = if idx == 0 {
+                (
+                    Some(crate::models::SceneVisual::KineticTitle {
+                        eyebrow: Some("CORE CONCEPT".to_string()),
+                        headline: pt.title.clone(),
+                        accent_word: pt.key_terms.first().cloned(),
+                        icon: None,
+                        chips: pt.key_terms.iter().take(3).cloned().collect(),
+                    }),
+                    Some(if items.len() <= 2 { "hero" } else { "split" }.to_string()),
+                )
+            } else if tpl == SceneTemplate::ProcessDiagram && items.len() >= 2 {
+                let d_nodes: Vec<crate::models::DiagramNode> = items
+                    .iter()
+                    .take(4)
+                    .enumerate()
+                    .map(|(n_idx, item)| crate::models::DiagramNode {
+                        id: format!("n{}", n_idx + 1),
+                        label: item.badge.clone().unwrap_or_else(|| format!("Step {}", n_idx + 1)),
+                        sublabel: Some(item.label.chars().take(28).collect()),
+                        icon: item.icon.clone(),
+                        accent: None,
+                        cue_index: item.cue_index,
+                    })
+                    .collect();
+                let d_edges: Vec<crate::models::DiagramEdge> = d_nodes
+                    .windows(2)
+                    .enumerate()
+                    .map(|(e_idx, pair)| crate::models::DiagramEdge {
+                        from: pair[0].id.clone(),
+                        to: pair[1].id.clone(),
+                        label: None,
+                        packet: true,
+                        dashed: false,
+                        cue_index: Some(e_idx + 1),
+                    })
+                    .collect();
+                (
+                    Some(crate::models::SceneVisual::Diagram {
+                        nodes: d_nodes,
+                        edges: d_edges,
+                        callout: pt.key_terms.first().cloned(),
+                    }),
+                    Some("split".to_string()),
+                )
+            } else if pt.example.is_some() && idx % 2 == 1 {
+                (
+                    Some(crate::models::SceneVisual::Metaphor {
+                        left_label: pt.title.clone(),
+                        left_icon: None,
+                        right_label: "Real-World Practice".to_string(),
+                        right_icon: Some("sparkles".to_string()),
+                        connector_label: Some("Explains".to_string()),
+                        character_pose: Some("point".to_string()),
+                        caption: pt.key_terms.first().cloned(),
+                    }),
+                    Some("split".to_string()),
+                )
+            } else {
+                (None, None)
+            };
             scenes.push(SceneSpec {
                 scene_id: scene_id.clone(),
                 base_scene_id: scene_id,
@@ -395,6 +481,8 @@ impl TextStageProvider for LocalDeterministicProvider {
                 source_refs: pt.source_refs.clone(),
                 narration_sentences: sentences,
                 items,
+                visual,
+                visual_layout,
                 footer_note: None,
             });
         }
@@ -666,6 +754,17 @@ mod concept_tests {
     use super::*;
     use crate::models::TranscriptSegment;
 
+    #[test]
+    fn split_sentences_preserves_domains_and_numbers() {
+        assert_eq!(
+            split_sentences("Visit example.com at 192.168.1.1 today. Then reload!"),
+            vec![
+                "Visit example.com at 192.168.1.1 today.".to_string(),
+                "Then reload!".to_string(),
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn authored_concepts_drive_the_scenes_instead_of_transcript_lines() {
         let sources = PreparedSources {
@@ -739,7 +838,15 @@ fn extract_json_object(raw: &str) -> anyhow::Result<Value> {
     anyhow::bail!("Response did not contain a valid JSON object: {s}")
 }
 
+static AGY_MODELS_CACHE: OnceLock<Mutex<Option<Vec<String>>>> = OnceLock::new();
+
 fn discover_agy_models_sync() -> Vec<String> {
+    let cache = AGY_MODELS_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock() {
+        if let Some(models) = guard.as_ref() {
+            return models.clone();
+        }
+    }
     #[cfg(windows)]
     let mut cmd = {
         let mut command = std::process::Command::new("cmd.exe");
@@ -759,11 +866,31 @@ fn discover_agy_models_sync() -> Vec<String> {
     if !out.status.success() {
         return Vec::new();
     }
-    String::from_utf8_lossy(&out.stdout)
+    let models: Vec<String> = String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(|line| line.split_once('\t').map(|(id, _)| id.trim().to_string()))
         .filter(|id| !id.is_empty())
-        .collect()
+        .collect();
+    if !models.is_empty() {
+        if let Ok(mut guard) = cache.lock() {
+            *guard = Some(models.clone());
+        }
+    }
+    models
+}
+
+pub(crate) fn compact_plan_for_coverage(plan: &ScenePlan) -> Value {
+    let mut val = serde_json::to_value(plan).unwrap_or_else(|_| json!({}));
+    if let Some(scenes) = val.get_mut("scenes").and_then(|s| s.as_array_mut()) {
+        for scene in scenes {
+            if let Some(visual) = scene.get_mut("visual").and_then(|v| v.as_object_mut()) {
+                if visual.get("kind").and_then(|k| k.as_str()) == Some("svg_sketch") {
+                    visual.insert("svg".to_string(), json!("[omitted inline svg]"));
+                }
+            }
+        }
+    }
+    val
 }
 
 pub(crate) fn resolve_agy_model_id(raw_model: &str, effort: &str, known_models: &[String]) -> String {
@@ -837,8 +964,21 @@ fn extract_agy_stream_response(stdout: &str) -> Result<String, ProviderError> {
     })
 }
 
+fn terminate_child_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let pid = child.id().to_string();
+        let mut kill_cmd = std::process::Command::new("taskkill");
+        use std::os::windows::process::CommandExt;
+        kill_cmd.creation_flags(0x08000000).args(["/F", "/T", "/PID", &pid]);
+        let _ = kill_cmd.status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 fn agy_json(system: &str, user_prompt: &str, cfg: &StageProviderConfig) -> Result<Value, ProviderError> {
-    use std::io::Write;
+    use std::io::{Read, Write};
     use std::process::{Command, Stdio};
 
     if cfg.model.is_empty()
@@ -851,6 +991,13 @@ fn agy_json(system: &str, user_prompt: &str, cfg: &StageProviderConfig) -> Resul
             "Antigravity CLI: Invalid Antigravity model".into(),
         ));
     }
+
+    let timeout_secs = std::env::var("LEARNINGEDGE_AGY_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(240)
+        .max(30);
+    let timeout_arg = format!("{timeout_secs}s");
 
     let dir = tempfile::tempdir().map_err(|e| ProviderError::Fatal(format!("Antigravity CLI: {e}")))?;
     let effort = match cfg.thinking {
@@ -893,7 +1040,7 @@ fn agy_json(system: &str, user_prompt: &str, cfg: &StageProviderConfig) -> Resul
             "--output-format",
             "stream-json",
             "--print-timeout",
-            "600s",
+            &timeout_arg,
             "--model",
             &resolved_model,
             "--effort",
@@ -914,20 +1061,59 @@ fn agy_json(system: &str, user_prompt: &str, cfg: &StageProviderConfig) -> Resul
             })?;
     }
 
-    let out = child
-        .wait_with_output()
-        .map_err(|e| ProviderError::Transient {
-            status: None,
-            message: format!("Antigravity CLI wait failed: {e}"),
-        })?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    if !out.status.success() {
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+    let stdout_handle = std::thread::spawn(move || -> Vec<u8> {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = stdout_pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let stderr_handle = std::thread::spawn(move || -> Vec<u8> {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = stderr_pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    terminate_child_tree(&mut child);
+                    let _ = stdout_handle.join();
+                    let _ = stderr_handle.join();
+                    return Err(ProviderError::Transient {
+                        status: None,
+                        message: format!("Antigravity CLI timed out after {timeout_secs}s"),
+                    });
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            Err(e) => {
+                terminate_child_tree(&mut child);
+                return Err(ProviderError::Transient {
+                    status: None,
+                    message: format!("Antigravity CLI wait failed: {e}"),
+                });
+            }
+        }
+    };
+
+    let stdout_bytes = stdout_handle.join().unwrap_or_default();
+    let stderr_bytes = stderr_handle.join().unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&stdout_bytes);
+    let stderr = String::from_utf8_lossy(&stderr_bytes);
+    if !status.success() {
         return Err(ProviderError::Transient {
             status: None,
             message: format!(
                 "Antigravity CLI exited with {}: {} {}",
-                out.status,
+                status,
                 stderr.trim(),
                 stdout.trim()
             ),
@@ -1128,15 +1314,20 @@ impl TextStageProvider for ConceptTextProvider {
     }
 
     async fn generate_scene_plan(&self, notes: &VerifiedNotes) -> Result<ScenePlan, ProviderError> {
-        let prompt =
-            serde_json::to_string(&json!({"notes": notes, "draft": LocalDeterministicProvider.generate_scene_plan(notes).await?})).map_err(|e| ProviderError::Fatal(e.to_string()))?;
-        let val = self
-            .chat_json(
-                include_str!("../../../docs/motion-authoring.md"),
-                &prompt,
-            )
-            .await?;
-        serde_json::from_value(val).map_err(|e| ProviderError::Fatal(e.to_string()))
+        let prompt = serde_json::to_string(&json!({
+            "notes": notes,
+            "draft": LocalDeterministicProvider.generate_scene_plan(notes).await?
+        }))
+        .map_err(|e| ProviderError::Fatal(e.to_string()))?;
+        let system = include_str!("../../../docs/motion-authoring.md");
+        retry_with_backoff(2, 500, |_| async {
+            let val = self.chat_json(system, &prompt).await?;
+            serde_json::from_value(val).map_err(|e| ProviderError::Transient {
+                status: None,
+                message: format!("Invalid ScenePlan JSON schema: {e}"),
+            })
+        })
+        .await
     }
 
     async fn verify_coverage_semantic(
@@ -1148,17 +1339,19 @@ impl TextStageProvider for ConceptTextProvider {
         struct IssuesWrapper {
             issues: Vec<CoverageIssue>,
         }
-        let prompt = serde_json::to_string(&json!({ "notes": notes, "plan": plan }))
+        let compact_plan = compact_plan_for_coverage(plan);
+        let prompt = serde_json::to_string(&json!({ "notes": notes, "plan": compact_plan }))
             .map_err(|e| ProviderError::Fatal(e.to_string()))?;
-        let val = self
-            .chat_json(
-                "Check whether each required concept is explained in the narration or visuals, including its key mechanism and any essential qualification. Accept paraphrases. Return only JSON {issues: [{note_point_id: string, scene_id: string or null, kind: 'missing_required_point' or 'shallow_mention_without_explanation', message: string}]}. Return an empty issues array if coverage passes.",
-                &prompt,
-            )
-            .await?;
-        let w: IssuesWrapper =
-            serde_json::from_value(val).map_err(|e| ProviderError::Fatal(e.to_string()))?;
-        Ok(w.issues)
+        let system = "Check whether each required concept is explained in the narration or visuals, including its key mechanism and any essential qualification. Accept paraphrases. Return only JSON {issues: [{note_point_id: string, scene_id: string or null, kind: 'missing_required_point' or 'shallow_mention_without_explanation', message: string}]}. Return an empty issues array if coverage passes.";
+        let wrapper: IssuesWrapper = retry_with_backoff(2, 500, |_| async {
+            let val = self.chat_json(system, &prompt).await?;
+            serde_json::from_value(val).map_err(|e| ProviderError::Transient {
+                status: None,
+                message: format!("Invalid CoverageIssue JSON schema: {e}"),
+            })
+        })
+        .await?;
+        Ok(wrapper.issues)
     }
 
     async fn dream_suggestions(
@@ -1314,10 +1507,13 @@ impl TextStageProvider for OpenAiProvider {
     }
 
     async fn generate_scene_plan(&self, notes: &VerifiedNotes) -> Result<ScenePlan, ProviderError> {
-        let prompt =
-            serde_json::to_string(notes).map_err(|e| ProviderError::Fatal(e.to_string()))?;
+        let prompt = serde_json::to_string(&json!({
+            "notes": notes,
+            "draft": LocalDeterministicProvider.generate_scene_plan(notes).await?
+        }))
+        .map_err(|e| ProviderError::Fatal(e.to_string()))?;
         let val = self
-            .chat_json("Generate ScenePlan JSON covering all required note points.", &prompt)
+            .chat_json(include_str!("../../../docs/motion-authoring.md"), &prompt)
             .await?;
         serde_json::from_value(val).map_err(|e| ProviderError::Fatal(e.to_string()))
     }
@@ -1331,7 +1527,8 @@ impl TextStageProvider for OpenAiProvider {
         struct IssuesWrapper {
             issues: Vec<CoverageIssue>,
         }
-        let prompt = serde_json::to_string(&json!({ "notes": notes, "plan": plan }))
+        let compact_plan = compact_plan_for_coverage(plan);
+        let prompt = serde_json::to_string(&json!({ "notes": notes, "plan": compact_plan }))
             .map_err(|e| ProviderError::Fatal(e.to_string()))?;
         let val = self
             .chat_json(
@@ -1486,10 +1683,13 @@ impl TextStageProvider for GeminiProvider {
     }
 
     async fn generate_scene_plan(&self, notes: &VerifiedNotes) -> Result<ScenePlan, ProviderError> {
-        let prompt =
-            serde_json::to_string(notes).map_err(|e| ProviderError::Fatal(e.to_string()))?;
+        let prompt = serde_json::to_string(&json!({
+            "notes": notes,
+            "draft": LocalDeterministicProvider.generate_scene_plan(notes).await?
+        }))
+        .map_err(|e| ProviderError::Fatal(e.to_string()))?;
         let val = self
-            .generate_json("Generate ScenePlan JSON covering all required note points.", &prompt)
+            .generate_json(include_str!("../../../docs/motion-authoring.md"), &prompt)
             .await?;
         serde_json::from_value(val).map_err(|e| ProviderError::Fatal(e.to_string()))
     }
@@ -1503,7 +1703,8 @@ impl TextStageProvider for GeminiProvider {
         struct IssuesWrapper {
             issues: Vec<CoverageIssue>,
         }
-        let prompt = serde_json::to_string(&json!({ "notes": notes, "plan": plan }))
+        let compact_plan = compact_plan_for_coverage(plan);
+        let prompt = serde_json::to_string(&json!({ "notes": notes, "plan": compact_plan }))
             .map_err(|e| ProviderError::Fatal(e.to_string()))?;
         let val = self
             .generate_json("Check coverage depth and return { issues: CoverageIssue[] }.", &prompt)
@@ -1533,7 +1734,8 @@ impl TextStageProvider for GeminiProvider {
 
 #[cfg(test)]
 mod agy_resolution_tests {
-    use super::{extract_agy_stream_response, resolve_agy_model_id};
+    use super::{compact_plan_for_coverage, extract_agy_stream_response, resolve_agy_model_id};
+    use crate::models::{SceneItem, ScenePlan, SceneSpec, SceneTemplate, SceneVisual};
     use crate::providers::ProviderError;
 
     #[test]
@@ -1598,5 +1800,50 @@ mod agy_resolution_tests {
             matches!(err, ProviderError::Transient { .. }),
             "expected Transient error, got {err:?}"
         );
+    }
+
+    #[test]
+    fn compact_plan_for_coverage_strips_raw_svg_but_keeps_semantics() {
+        let plan = ScenePlan {
+            lecture_id: "lec-1".to_string(),
+            title: "Waves".to_string(),
+            scenes: vec![SceneSpec {
+                scene_id: "sc-1".to_string(),
+                base_scene_id: "sc-1".to_string(),
+                part_index: 1,
+                part_total: 1,
+                title: "Harmonic Motion".to_string(),
+                subtitle: None,
+                template: SceneTemplate::ConceptReveal,
+                note_point_ids: vec!["np-1".to_string()],
+                source_refs: vec!["transcript:s1".to_string()],
+                narration_sentences: vec!["Restoring force scales with displacement.".to_string()],
+                items: vec![SceneItem {
+                    id: "it-1".to_string(),
+                    badge: Some("Law".to_string()),
+                    label: "Hooke Law".to_string(),
+                    detail: "F = -kx".to_string(),
+                    cue_index: Some(0),
+                    icon: None,
+                    stat: None,
+                }],
+                visual: Some(SceneVisual::SvgSketch {
+                    svg: "<svg viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"40\"/></svg>".to_string(),
+                    caption: Some("Spring diagram".to_string()),
+                }),
+                visual_layout: Some("split".to_string()),
+                footer_note: None,
+            }],
+        };
+
+        let compacted = compact_plan_for_coverage(&plan);
+        let scene = &compacted["scenes"][0];
+        assert_eq!(scene["visual"]["kind"], "svg_sketch");
+        assert_eq!(scene["visual"]["svg"], "[omitted inline svg]");
+        assert_eq!(scene["visual"]["caption"], "Spring diagram");
+        assert_eq!(scene["note_point_ids"][0], "np-1");
+        assert_eq!(scene["source_refs"][0], "transcript:s1");
+        assert_eq!(scene["narration_sentences"][0], "Restoring force scales with displacement.");
+        assert_eq!(scene["items"][0]["label"], "Hooke Law");
     }
 }
