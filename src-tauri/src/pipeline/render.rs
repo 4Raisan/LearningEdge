@@ -12,6 +12,7 @@ use crate::models::{
 };
 use crate::pipeline::ingest::sha256_hex;
 use crate::providers::narration::{concat_wav_files, pad_wav_to_duration, NarrationProvider};
+use crate::providers::sfx::mix_scene_sfx;
 use crate::sidecars::ToolPaths;
 
 #[derive(Debug, Deserialize)]
@@ -216,10 +217,14 @@ pub async fn render_scene_plan_to_video(
         let nar_input = serde_json::json!({
             "scene_id": &scene.scene_id,
             "scene_index": scene_idx,
+            "scene_total": scene_total,
+            "title": &scene.title,
             "sentences": &scene.narration_sentences,
             "voice": &preset.narration_voice,
             "rate": preset.narration_rate,
-            "narration_engine": "selected-model-audio-v1",
+            "narration_provider": &preset.narration_provider,
+            "sfx_enabled": preset.sfx_enabled,
+            "narration_engine": "edge-tts-sfx-v1",
             "model_config": &preset.scene_plan_stage,
             "fps": fps,
         });
@@ -253,6 +258,16 @@ pub async fn render_scene_plan_to_video(
                 let fc = (((synth.duration_ms as f64 / 1000.0) * fps as f64).ceil() as u32).max(1);
                 let target_ms = (((fc as f64) / (fps as f64)) * 1000.0).round() as u64;
                 let padded_ms = pad_wav_to_duration(&target_wav, target_ms)?;
+                if preset.sfx_enabled {
+                    mix_scene_sfx(
+                        &target_wav,
+                        scene_idx,
+                        scene_total,
+                        &synth.cues,
+                        &scene.scene_id,
+                        &scene.title,
+                    )?;
+                }
                 db::upsert_scene_artifact(
                     pool,
                     &audio_cache_key,
@@ -281,7 +296,7 @@ pub async fn render_scene_plan_to_video(
             "theme": preset.video_theme,
             "scene_index": scene_idx,
             "scene_total": scene_total,
-            "renderer_version": "konva-studio-review-v3"
+            "renderer_version": "konva-motion-engine-v6"
         });
         let clip_hash = sha256_hex(serde_json::to_string(&clip_input)?.as_bytes());
         let clip_cache_key = format!("clip:{clip_hash}");
@@ -477,7 +492,7 @@ pub async fn render_scene_plan_to_video(
                 "-c:a",
                 "aac",
                 "-b:a",
-                "160k",
+                "192k",
                 "-c:s",
                 "mov_text",
                 "-metadata:s:s:0",
@@ -618,6 +633,7 @@ async fn run_konva_scene_export(
         let script = tools_c.project_root.join("scripts").join("render-scene.ts");
         Command::new(&tools_c.node)
             .current_dir(&tools_c.project_root)
+            .arg("--expose-gc")
             .arg(&tools_c.tsx_cli)
             .arg(&script)
             .arg("--mode")

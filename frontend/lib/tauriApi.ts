@@ -30,8 +30,10 @@ export interface PresetConfig {
   scene_plan_stage: StageProviderConfig;
   coverage_stage: StageProviderConfig;
   dreaming_stage: StageProviderConfig;
+  narration_provider?: "auto" | "edge_tts" | "windows_sapi" | "model_audio";
   narration_voice: string;
   narration_rate: number;
+  sfx_enabled?: boolean;
   fps: number;
   width: number;
   height: number;

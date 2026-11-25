@@ -102,6 +102,7 @@ pub async fn enqueue_configured(pool: &SqlitePool, data_dir: &std::path::Path, l
         preset.offline_only = notes.provider == StageProviderKind::Ollama && video.provider == StageProviderKind::Ollama;
         preset.note_depth = settings.depth;
         preset.auto_graph = settings.auto_graph;
+        preset.sfx_enabled = settings.sfx_enabled;
         if settings.portrait { std::mem::swap(&mut preset.width, &mut preset.height); }
         preset.video_theme = settings.video_theme;
         if !settings.voice.trim().is_empty() {

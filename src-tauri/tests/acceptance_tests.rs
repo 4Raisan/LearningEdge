@@ -186,6 +186,8 @@ async fn test_coverage_three_versions_and_cache_reuse() {
             s.items = vec![SceneItem {
                 id: "shallow-1".to_string(),
                 badge: None,
+                icon: None,
+                stat: None,
                 label: "Write Policies".to_string(),
                 detail: "See topic.".to_string(),
                 cue_index: Some(0),

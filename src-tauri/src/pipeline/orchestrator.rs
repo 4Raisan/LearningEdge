@@ -5,14 +5,15 @@ use std::time::Instant;
 
 use crate::db;
 use crate::models::{
-    BenchmarkMetrics, PipelineRunRecord, PreparedSources, PresetConfig, RunArtifactsBundle,
-    ScenePlan, StageTimingMetric, VerifiedNotes,
+    BenchmarkMetrics, NarrationProviderKind, PipelineRunRecord, PreparedSources, PresetConfig,
+    RunArtifactsBundle, ScenePlan, StageTimingMetric, VerifiedNotes,
 };
 use crate::pipeline::coverage::verify_scene_plan_coverage;
 use crate::pipeline::ingest::{prepare_sources_from_files, sha256_hex};
 use crate::pipeline::render::render_scene_plan_to_video;
+use crate::providers::edge_tts::EdgeTtsProvider;
 use crate::providers::model_audio::ModelAudio;
-use crate::providers::narration::NarrationProvider;
+use crate::providers::narration::{NarrationProvider, WindowsSapiProvider};
 use crate::providers::text::build_text_provider;
 use crate::sidecars::ToolPaths;
 
@@ -360,10 +361,27 @@ pub async fn execute_pipeline_run(
     )
     .await?;
     let t5 = Instant::now();
-    // Narration audio must come from the selected video model. A text-only or
-    // unsupported audio endpoint fails clearly instead of silently using TTS.
-    let narration: Box<dyn NarrationProvider> =
-        Box::new(ModelAudio::new(&preset.scene_plan_stage, preset.offline_only)?);
+    let narration: Box<dyn NarrationProvider> = match preset.narration_provider {
+        NarrationProviderKind::Auto => {
+            if preset.offline_only {
+                Box::new(WindowsSapiProvider)
+            } else {
+                Box::new(EdgeTtsProvider::new(tools.ffmpeg.clone()))
+            }
+        }
+        NarrationProviderKind::EdgeTts => {
+            if preset.offline_only {
+                return Err(anyhow!(
+                    "Offline mode blocks Edge Neural TTS; use Windows SAPI or disable offline-only mode."
+                ));
+            }
+            Box::new(EdgeTtsProvider::new(tools.ffmpeg.clone()))
+        }
+        NarrationProviderKind::WindowsSapi => Box::new(WindowsSapiProvider),
+        NarrationProviderKind::ModelAudio => {
+            Box::new(ModelAudio::new(&preset.scene_plan_stage, preset.offline_only)?)
+        }
+    };
     let render_stats = render_scene_plan_to_video(
         pool,
         tools,

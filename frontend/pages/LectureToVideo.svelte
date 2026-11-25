@@ -34,6 +34,7 @@
   // Input state
   let {settings=$bindable()}:{settings:import("../lib/studio").Preferences}=$props();
   let autoGraph=$state(true);
+  let sfxEnabled=$state(true);
   let depth=$state<import("../lib/studio").Depth>("standard");
   let lectureText = $state("");
 
@@ -79,7 +80,7 @@
   async function trackVideo(id: string, content: string) {
     try {
       if (!isTauriRuntime()) throw new Error("Open LearningEdge desktop to generate a video.");
-      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content, settings: { notes:settings.notes, video:settings.video, depth, auto_graph:autoGraph, portrait, video_theme:videoTheme } });
+      const { run_id } = await invokeTauri<{ run_id: string }>("run_lecture_text", { lectureText: content, settings: { notes:settings.notes, video:settings.video, depth, auto_graph:autoGraph, sfx_enabled:sfxEnabled, portrait, video_theme:videoTheme } });
       while (true) {
         const { run, video_manifest, coverage_report, verified_notes } = await invokeTauri<RunArtifactsBundle>("get_run_artifacts", { runId: run_id });
         updateItem(id, {
@@ -402,7 +403,6 @@
         </div>
 
         <div class="render-options"><label>Ratio <select bind:value={portrait}><option value={false}>16:9</option><option value={true}>9:16</option></select></label><label>Video theme <select bind:value={videoTheme}><option value="night">Night</option><option value="light">Light</option><option value="forest">Forest</option></select></label><label class="depth">Note depth <select bind:value={depth}><option value="brief">Brief</option><option value="standard">Standard</option><option value="deep">Deep</option></select></label></div>
-        {#if settings.video.provider!=="open_ai"}<small>Narration requires a video model with native audio output on a compatible endpoint.</small>{/if}
         <div class="input-actions">
           <ModelPicker label="Lecture video" bind:choice={settings.video}/>
           <button
@@ -415,6 +415,7 @@
             </svg>
             <span>Generate video</span>
           </button>
+          <label title="Mix subtle transition whoosh and cue tones under narration"><input type="checkbox" bind:checked={sfxEnabled}/> Sound effects</label>
           <label title="Automatically update your knowledge graph after generation"><input type="checkbox" bind:checked={autoGraph}/> Knowledge graph</label>
         </div>
       </div>

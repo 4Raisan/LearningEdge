@@ -131,3 +131,14 @@ pub fn find_powershell_exe() -> Result<PathBuf> {
         .or_else(|| find_in_path("powershell"))
         .context("Neither pwsh nor powershell.exe found on PATH")
 }
+
+/// Resolves `edge-tts` executable or falls back to `python -m edge_tts`.
+pub fn find_edge_tts_cmd() -> Option<(PathBuf, Vec<String>)> {
+    if let Some(exe) = find_sidecar("edge-tts", "LEARNINGEDGE_EDGE_TTS_PATH") {
+        return Some((exe, Vec::new()));
+    }
+    if let Some(py) = find_in_path("python").or_else(|| find_in_path("python3")) {
+        return Some((py, vec!["-m".to_string(), "edge_tts".to_string()]));
+    }
+    None
+}

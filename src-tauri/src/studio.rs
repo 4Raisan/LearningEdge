@@ -58,7 +58,8 @@ impl Choice {
 }
 
 fn default_graph() -> bool { true }
-fn default_voice() -> String { "mixed".to_string() }
+fn default_true() -> bool { true }
+fn default_voice() -> String { "en-US-AvaMultilingualNeural".to_string() }
 
 #[derive(Deserialize)]
 pub struct LectureSettings {
@@ -68,6 +69,8 @@ pub struct LectureSettings {
     pub auto_graph: bool,
     #[serde(default = "default_voice")]
     pub voice: String,
+    #[serde(default = "default_true")]
+    pub sfx_enabled: bool,
     pub notes: Choice,
     pub video: Choice,
     pub depth: NoteDepth,

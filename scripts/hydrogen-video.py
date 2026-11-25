@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--script-only", action="store_true", help="Save the reviewed Hydrogen script")
     args = parser.parse_args()
     if not args.script_only:
-        parser.error("This Hydrogen CLI connection returns text. Use --script-only for authoring; native model audio is required for video export.")
+        parser.error("This standalone CLI helper only writes script JSON; pass --script-only, or use the LearningEdge desktop app for full narrated video export (Edge Neural TTS + SFX).")
     source = args.lecture.read_text(encoding="utf-8-sig").strip()
     if not source:
         parser.error("Lecture file is empty.")

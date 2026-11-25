@@ -26,7 +26,112 @@ pub struct SceneItem {
     #[serde(default)]
     pub badge: Option<String>,
     #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub stat: Option<String>,
+    #[serde(default)]
     pub cue_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagramNode {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub sublabel: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub accent: Option<String>,
+    #[serde(default)]
+    pub cue_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagramEdge {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub packet: bool,
+    #[serde(default)]
+    pub dashed: bool,
+    #[serde(default)]
+    pub cue_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChartDatum {
+    pub label: String,
+    pub value: f64,
+    #[serde(default)]
+    pub suffix: Option<String>,
+    #[serde(default)]
+    pub accent: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SceneVisual {
+    KineticTitle {
+        #[serde(default)]
+        eyebrow: Option<String>,
+        headline: String,
+        #[serde(default)]
+        accent_word: Option<String>,
+        #[serde(default)]
+        icon: Option<String>,
+        #[serde(default)]
+        chips: Vec<String>,
+    },
+    Diagram {
+        #[serde(default)]
+        nodes: Vec<DiagramNode>,
+        #[serde(default)]
+        edges: Vec<DiagramEdge>,
+        #[serde(default)]
+        callout: Option<String>,
+    },
+    Chart {
+        #[serde(default)]
+        chart_type: String,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        bars: Vec<ChartDatum>,
+        #[serde(default)]
+        percent: Option<f64>,
+        #[serde(default)]
+        metric_value: Option<f64>,
+        #[serde(default)]
+        metric_prefix: Option<String>,
+        #[serde(default)]
+        metric_suffix: Option<String>,
+        #[serde(default)]
+        metric_label: Option<String>,
+        #[serde(default)]
+        callout: Option<String>,
+    },
+    Metaphor {
+        left_label: String,
+        #[serde(default)]
+        left_icon: Option<String>,
+        right_label: String,
+        #[serde(default)]
+        right_icon: Option<String>,
+        #[serde(default)]
+        connector_label: Option<String>,
+        #[serde(default)]
+        character_pose: Option<String>,
+        #[serde(default)]
+        caption: Option<String>,
+    },
+    SvgSketch {
+        svg: String,
+        #[serde(default)]
+        caption: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +151,10 @@ pub struct SceneSpec {
     pub source_refs: Vec<String>,
     pub narration_sentences: Vec<String>,
     pub items: Vec<SceneItem>,
+    #[serde(default)]
+    pub visual: Option<SceneVisual>,
+    #[serde(default)]
+    pub visual_layout: Option<String>,
     #[serde(default)]
     pub footer_note: Option<String>,
 }
@@ -307,6 +416,16 @@ pub struct StageProviderConfig {
     pub base_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NarrationProviderKind {
+    #[default]
+    Auto,
+    EdgeTts,
+    WindowsSapi,
+    ModelAudio,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresetConfig {
     #[serde(default)] pub video_theme: String,
@@ -326,9 +445,13 @@ pub struct PresetConfig {
     pub scene_plan_stage: StageProviderConfig,
     pub coverage_stage: StageProviderConfig,
     pub dreaming_stage: StageProviderConfig,
+    #[serde(default)]
+    pub narration_provider: NarrationProviderKind,
     pub narration_voice: String,
     #[serde(default)]
     pub narration_rate: i32,
+    #[serde(default = "default_true")]
+    pub sfx_enabled: bool,
     #[serde(default = "default_fps")]
     pub fps: u32,
     #[serde(default = "default_width")]
@@ -370,8 +493,10 @@ impl Default for PresetConfig {
             scene_plan_stage: local_stage.clone(),
             coverage_stage: local_stage.clone(),
             dreaming_stage: local_stage,
-            narration_voice: String::new(),
-            narration_rate: 1,
+            narration_provider: NarrationProviderKind::Auto,
+            narration_voice: "en-US-AvaMultilingualNeural".to_string(),
+            narration_rate: -4,
+            sfx_enabled: true,
             fps: 30,
             width: 1280,
             height: 720,
