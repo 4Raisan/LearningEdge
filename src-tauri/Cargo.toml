@@ -17,10 +17,16 @@ path = "src/main.rs"
 name = "pipeline_cli"
 path = "src/bin/pipeline_cli.rs"
 
+[[bin]]
+name = "portable_launcher"
+path = "src/bin/portable_launcher.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.22"
+flate2 = "1"
 anyhow = "1"
 apalis = { version = "1.2", features = ["retry", "tracing"] }
 apalis-sqlite = "1.2"
