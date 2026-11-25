@@ -207,20 +207,13 @@ fn run() -> io::Result<()> {
     }
 
     let app_exe = cache_dir.join("learningedge.exe");
-    let py_dir = cache_dir.join("python");
-    let py_exe = py_dir.join("python.exe");
-    let py_site = py_dir.join("site-packages");
-
     let mut cmd = Command::new(&app_exe);
     cmd.current_dir(&cache_dir)
         .args(std::env::args_os().skip(1))
         .env("LEARNINGEDGE_ROOT", &cache_dir)
         .env("LEARNINGEDGE_FFMPEG_PATH", cache_dir.join("ffmpeg.exe"))
         .env("LEARNINGEDGE_FFPROBE_PATH", cache_dir.join("ffprobe.exe"))
-        .env("LEARNINGEDGE_NODE_PATH", cache_dir.join("node.exe"))
-        .env("LEARNINGEDGE_PYTHON_PATH", &py_exe)
-        .env("PYTHONPATH", &py_site)
-        .env("PYTHONNOUSERSITE", "1");
+        .env("LEARNINGEDGE_NODE_PATH", cache_dir.join("node.exe"));
 
     cmd.spawn()?;
     Ok(())

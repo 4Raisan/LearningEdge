@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import gzip
 import hashlib
-import importlib.metadata as md
 import json
 import os
 import shutil
@@ -20,20 +19,6 @@ APP_EXE = ROOT / "src-tauri" / "target" / "release" / "learningedge.exe"
 LAUNCHER_EXE = ROOT / "src-tauri" / "target" / "release" / "portable_launcher.exe"
 OUT_EXE = ROOT / "dist-portable" / "LearningEdge-Portable.exe"
 MAGIC = b"LEPORT01"
-
-SKIP_PY_LIB_DIRS = {
-    "__pycache__",
-    "site-packages",
-    "test",
-    "tests",
-    "idlelib",
-    "tkinter",
-    "turtledemo",
-    "ensurepip",
-    "venv",
-    "lib2to3",
-}
-
 
 def find_real_node() -> Path:
     raw = subprocess.check_output(
@@ -100,95 +85,6 @@ def copy_node_runtime(stage_nm: Path) -> None:
                         queue.append((entry.name, entry))
 
 
-def copy_python_runtime(stage_py: Path) -> None:
-    py_prefix = Path(sys.prefix)
-    stage_py.mkdir(parents=True, exist_ok=True)
-
-    for pattern in ("python.exe", "python3*.dll", "vcruntime140*.dll"):
-        for f in py_prefix.glob(pattern):
-            if f.is_file():
-                shutil.copy2(f, stage_py / f.name)
-
-    dlls_src = py_prefix / "DLLs"
-    if dlls_src.is_dir():
-        shutil.copytree(
-            dlls_src,
-            stage_py / "DLLs",
-            symlinks=False,
-            ignore=shutil.ignore_patterns("__pycache__", "*.pdb"),
-        )
-
-    lib_src = py_prefix / "Lib"
-    if lib_src.is_dir():
-        def ignore_lib(cur_dir: str, names: list[str]) -> set[str]:
-            if Path(cur_dir) == lib_src:
-                return {n for n in names if n in SKIP_PY_LIB_DIRS}
-            return {n for n in names if n in ("__pycache__", "test", "tests")}
-
-        shutil.copytree(lib_src, stage_py / "Lib", symlinks=False, ignore=ignore_lib)
-
-    stage_site = stage_py / "site-packages"
-    stage_site.mkdir(parents=True, exist_ok=True)
-
-    seen_dists: set[str] = set()
-    copied_roots: set[tuple[Path, str]] = set()
-    queue = ["edge-tts", "numpy"]
-    while queue:
-        raw_name = queue.pop(0)
-        key = raw_name.lower().replace("_", "-")
-        if key in seen_dists:
-            continue
-        seen_dists.add(key)
-        try:
-            dist = md.distribution(key)
-        except md.PackageNotFoundError:
-            continue
-
-        site_root = Path(dist._path).parent
-        top_roots = {
-            str(f).replace("\\", "/").split("/")[0]
-            for f in (dist.files or [])
-            if not str(f).endswith(".pyc") and not str(f).startswith("..")
-        }
-        for top in sorted(top_roots):
-            if (site_root, top) in copied_roots:
-                continue
-            src_item = site_root / top
-            if not src_item.exists():
-                continue
-            copied_roots.add((site_root, top))
-            dst_item = stage_site / top
-            if src_item.is_dir():
-                shutil.copytree(
-                    src_item,
-                    dst_item,
-                    symlinks=False,
-                    dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-                )
-            else:
-                shutil.copy2(src_item, dst_item)
-
-        for req in dist.requires or []:
-            if ";" in req:
-                _, marker = req.split(";", 1)
-                if "extra ==" in marker:
-                    continue
-            dep = (
-                req.split(";")[0]
-                .split("(")[0]
-                .split("<")[0]
-                .split(">")[0]
-                .split("=")[0]
-                .split("!")[0]
-                .split("~")[0]
-                .split("[")[0]
-                .strip()
-            )
-            if dep:
-                queue.append(dep)
-
-
 def smoke_test(staged: Path) -> None:
     print("Running isolated runtime smoke tests...")
     subprocess.check_call(
@@ -200,18 +96,6 @@ def smoke_test(staged: Path) -> None:
         [str(staged / "ffprobe.exe"), "-version"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-    )
-
-    py_env = {
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows"),
-        "PATH": f"{staged};{staged / 'python'}",
-        "PYTHONPATH": str(staged / "python" / "site-packages"),
-        "PYTHONNOUSERSITE": "1",
-    }
-    subprocess.check_call(
-        [str(staged / "python" / "python.exe"), "-c", "import edge_tts, numpy; print('py ok')"],
-        env=py_env,
-        cwd=staged,
     )
 
     paginate_in = staged / "_smoke_in.json"
@@ -337,16 +221,12 @@ def main() -> int:
 
         (staged / "scripts").mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / "scripts" / "render-scene.ts", staged / "scripts" / "render-scene.ts")
-        shutil.copy2(ROOT / "scripts" / "neural-narration.py", staged / "scripts" / "neural-narration.py")
         shutil.copy2(ROOT / "package.json", staged / "package.json")
         shutil.copy2(ROOT / "tsconfig.json", staged / "tsconfig.json")
         shutil.copytree(ROOT / "frontend" / "lib" / "renderer", staged / "frontend" / "lib" / "renderer")
 
         print("Staging Node runtime modules...")
         copy_node_runtime(staged / "node_modules")
-        print("Staging Python + edge_tts/numpy runtime...")
-        copy_python_runtime(staged / "python")
-
         smoke_test(staged)
         pack_portable(staged, OUT_EXE)
 
