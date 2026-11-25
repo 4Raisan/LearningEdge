@@ -22,7 +22,11 @@ impl Choice {
     pub fn config(self) -> Result<StageProviderConfig, String> {
         if !matches!(
             self.provider,
-            StageProviderKind::Ollama | StageProviderKind::CodexCli | StageProviderKind::OpenAi
+            StageProviderKind::Ollama
+                | StageProviderKind::CodexCli
+                | StageProviderKind::Antigravity
+                | StageProviderKind::OpenAi
+                | StageProviderKind::Gemini
         ) || self.model.is_empty()
             || !self
                 .model
@@ -31,7 +35,18 @@ impl Choice {
         {
             return Err("Select a connected desktop model.".into());
         }
-        let endpoint = if self.provider == StageProviderKind::OpenAi {Some(hosted_endpoint(self.endpoint.as_deref().ok_or("Enter an API endpoint")?)?)} else {None};
+        let endpoint = match self.provider {
+            StageProviderKind::OpenAi => Some(hosted_endpoint(
+                self.endpoint.as_deref().ok_or("Enter an API endpoint")?,
+            )?),
+            StageProviderKind::Gemini => Some(hosted_endpoint(
+                self.endpoint
+                    .as_deref()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or("https://generativelanguage.googleapis.com/v1beta"),
+            )?),
+            _ => None,
+        };
         Ok(StageProviderConfig {
             provider: self.provider,
             model: self.model,
@@ -43,6 +58,7 @@ impl Choice {
 }
 
 fn default_graph() -> bool { true }
+fn default_voice() -> String { "mixed".to_string() }
 
 #[derive(Deserialize)]
 pub struct LectureSettings {
@@ -50,9 +66,41 @@ pub struct LectureSettings {
     #[serde(default)] pub video_theme: String,
     #[serde(default = "default_graph")]
     pub auto_graph: bool,
+    #[serde(default = "default_voice")]
+    pub voice: String,
     pub notes: Choice,
     pub video: Choice,
     pub depth: NoteDepth,
+}
+
+#[cfg(test)]
+mod choice_tests {
+    use super::*;
+
+    #[test]
+    fn choice_config_accepts_antigravity_and_gemini() {
+        let agy = Choice {
+            provider: StageProviderKind::Antigravity,
+            model: "gemini-4-hydrogen".into(),
+            thinking: ThinkingLevel::Xhigh,
+            endpoint: None,
+        };
+        let cfg = agy.config().expect("antigravity config should succeed");
+        assert_eq!(cfg.provider, StageProviderKind::Antigravity);
+        assert_eq!(cfg.model, "gemini-4-hydrogen");
+        assert_eq!(cfg.thinking, ThinkingLevel::Xhigh);
+        assert!(cfg.credential_ref.is_none());
+
+        let gem = Choice {
+            provider: StageProviderKind::Gemini,
+            model: "gemini-2.5-flash".into(),
+            thinking: ThinkingLevel::Medium,
+            endpoint: None,
+        };
+        let gcfg = gem.config().expect("gemini config should succeed");
+        assert_eq!(gcfg.provider, StageProviderKind::Gemini);
+        assert!(gcfg.base_url.is_some());
+    }
 }
 
 #[tauri::command]

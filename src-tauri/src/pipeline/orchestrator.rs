@@ -11,7 +11,10 @@ use crate::models::{
 use crate::pipeline::coverage::verify_scene_plan_coverage;
 use crate::pipeline::ingest::{prepare_sources_from_files, sha256_hex};
 use crate::pipeline::render::render_scene_plan_to_video;
-use crate::providers::narration::WindowsSapiProvider;
+use crate::providers::model_audio::ModelAudio;
+use crate::providers::narration::{
+    is_neural_voice, NarrationProvider, NeuralNarrationProvider, WindowsSapiProvider,
+};
 use crate::providers::text::build_text_provider;
 use crate::sidecars::ToolPaths;
 
@@ -261,6 +264,7 @@ pub async fn execute_pipeline_run(
             serde_json::to_string(&serde_json::json!({
                 "verify_hash": &verify_input_hash,
                 "stage": &preset.scene_plan_stage,
+                "authoring": include_str!("../../../docs/motion-authoring.md"),
                 "offline_only": preset.offline_only
             }))?
             .as_bytes(),
@@ -358,11 +362,21 @@ pub async fn execute_pipeline_run(
     )
     .await?;
     let t5 = Instant::now();
-    let narration = WindowsSapiProvider;
+    let narration: Box<dyn NarrationProvider> =
+        if preset.narration_voice.trim().eq_ignore_ascii_case("model_audio") {
+            Box::new(ModelAudio::new(&preset.scene_plan_stage, preset.offline_only)?)
+        } else if is_neural_voice(&preset.narration_voice) {
+            Box::new(NeuralNarrationProvider::new(
+                tools.project_root.clone(),
+                tools.ffmpeg.clone(),
+            ))
+        } else {
+            Box::new(WindowsSapiProvider)
+        };
     let render_stats = render_scene_plan_to_video(
         pool,
         tools,
-        &narration,
+        narration.as_ref(),
         run_id,
         &verified_notes,
         &scene_plan,

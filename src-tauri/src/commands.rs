@@ -104,6 +104,9 @@ pub async fn enqueue_configured(pool: &SqlitePool, data_dir: &std::path::Path, l
         preset.auto_graph = settings.auto_graph;
         if settings.portrait { std::mem::swap(&mut preset.width, &mut preset.height); }
         preset.video_theme = settings.video_theme;
+        if !settings.voice.trim().is_empty() {
+            preset.narration_voice = settings.voice.trim().to_string();
+        }
         preset.verify_stage = notes.clone();
         preset.notes_stage = notes;
         preset.scene_plan_stage = video.clone();

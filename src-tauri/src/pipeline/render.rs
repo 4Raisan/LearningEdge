@@ -35,6 +35,8 @@ struct RenderSceneJob<'a> {
     width: u32,
     height: u32,
     theme: &'a str,
+    scene_index: usize,
+    scene_total: usize,
     output_mp4: String,
     ffmpeg_path: String,
     show_captions: bool,
@@ -186,6 +188,19 @@ pub async fn render_scene_plan_to_video(
     )
     .await?;
 
+    struct PreparedScene<'a> {
+        scene_idx: usize,
+        scene: &'a SceneSpec,
+        wav_path: PathBuf,
+        frame_count: u32,
+        clip_duration_ms: u64,
+        cues: Vec<SentenceCue>,
+        reused_audio: bool,
+        clip_cache_key: String,
+        target_clip: PathBuf,
+        reused_clip: bool,
+    }
+
     let mut entries = Vec::with_capacity(paginated_scenes.len());
     let mut padded_wavs = Vec::with_capacity(paginated_scenes.len());
     let mut clip_paths = Vec::with_capacity(paginated_scenes.len());
@@ -193,60 +208,42 @@ pub async fn render_scene_plan_to_video(
     let mut reused_audio_count = 0usize;
     let mut reused_clip_count = 0usize;
 
-    for scene in &paginated_scenes {
-        // 1. Narration first: synthesize or reuse cached WAV + sentence cues
+    let scene_total = paginated_scenes.len().max(1);
+    let mut prepared = Vec::with_capacity(paginated_scenes.len());
+
+    // Phase A: Narration first & audio/clip cache lookup
+    for (scene_idx, scene) in paginated_scenes.iter().enumerate() {
         let nar_input = serde_json::json!({
             "scene_id": &scene.scene_id,
+            "scene_index": scene_idx,
             "sentences": &scene.narration_sentences,
             "voice": &preset.narration_voice,
             "rate": preset.narration_rate,
+            "narration_engine": "selected-model-audio-v1",
+            "model_config": &preset.scene_plan_stage,
             "fps": fps,
         });
         let nar_hash = sha256_hex(serde_json::to_string(&nar_input)?.as_bytes());
         let audio_cache_key = format!("audio:{nar_hash}");
 
+        let cached_audio = match db::get_scene_artifact(pool, &audio_cache_key).await? {
+            Some((cached_path, dur_ms, fc, cues_json)) if Path::new(&cached_path).is_file() => {
+                let parsed_cues: Vec<SentenceCue> = serde_json::from_str(&cues_json)?;
+                reused_audio_count += 1;
+                Some((PathBuf::from(cached_path), dur_ms, fc, parsed_cues, true))
+            }
+            _ => None,
+        };
+
         let (wav_path, raw_duration_ms, frame_count, cues, reused_audio) =
-            if let Some((cached_path, dur_ms, fc, cues_json)) =
-                db::get_scene_artifact(pool, &audio_cache_key).await?
-            {
-                let p = PathBuf::from(&cached_path);
-                if p.is_file() {
-                    let parsed_cues: Vec<SentenceCue> = serde_json::from_str(&cues_json)?;
-                    reused_audio_count += 1;
-                    (p, dur_ms, fc, parsed_cues, true)
-                } else {
-                    let target_wav = audio_dir.join(format!("{}_{}.wav", scene.scene_id, &nar_hash[..8]));
-                    let synth = narration
-                        .synthesize_scene(
-                            &scene.scene_id,
-                            &scene.narration_sentences,
-                            &target_wav,
-                            &preset.narration_voice,
-                            preset.narration_rate,
-                        )
-                        .await?;
-                    let fc = (((synth.duration_ms as f64 / 1000.0) * fps as f64).ceil() as u32).max(1);
-                    let target_ms = (((fc as f64) / (fps as f64)) * 1000.0).round() as u64;
-                    let padded_ms = pad_wav_to_duration(&target_wav, target_ms)?;
-                    db::upsert_scene_artifact(
-                        pool,
-                        &audio_cache_key,
-                        run_id,
-                        &scene.scene_id,
-                        "audio",
-                        &target_wav.to_string_lossy(),
-                        padded_ms,
-                        fc,
-                        &serde_json::to_string(&synth.cues)?,
-                    )
-                    .await?;
-                    (target_wav, padded_ms, fc, synth.cues, false)
-                }
+            if let Some(hit) = cached_audio {
+                hit
             } else {
                 let target_wav = audio_dir.join(format!("{}_{}.wav", scene.scene_id, &nar_hash[..8]));
                 let synth = narration
-                    .synthesize_scene(
+                    .synthesize_scene_with_context(
                         &scene.scene_id,
+                        scene_idx,
                         &scene.narration_sentences,
                         &target_wav,
                         &preset.narration_voice,
@@ -274,7 +271,6 @@ pub async fn render_scene_plan_to_video(
         let clip_duration_ms = (((frame_count as f64) / (fps as f64)) * 1000.0).round() as u64;
         let _ = raw_duration_ms;
 
-        // 2. Render per-scene Konva motion graphics clip (or reuse cached clip)
         let clip_input = serde_json::json!({
             "scene": scene,
             "cues": &cues,
@@ -283,104 +279,122 @@ pub async fn render_scene_plan_to_video(
             "width": width,
             "height": height,
             "theme": preset.video_theme,
-            "renderer_version": "konva-v1"
+            "scene_index": scene_idx,
+            "scene_total": scene_total,
+            "renderer_version": "konva-studio-review-v3"
         });
         let clip_hash = sha256_hex(serde_json::to_string(&clip_input)?.as_bytes());
         let clip_cache_key = format!("clip:{clip_hash}");
 
-        let (clip_path, reused_clip) = if let Some((cached_clip, _, _, _)) =
-            db::get_scene_artifact(pool, &clip_cache_key).await?
-        {
-            let p = PathBuf::from(&cached_clip);
-            if p.is_file() {
+        let (target_clip, reused_clip) = match db::get_scene_artifact(pool, &clip_cache_key).await? {
+            Some((path, _, _, _)) if Path::new(&path).is_file() => {
                 reused_clip_count += 1;
-                (p, true)
-            } else {
-                let target_clip = clips_dir.join(format!("{}_{}.mp4", scene.scene_id, &clip_hash[..8]));
-                run_konva_scene_export(
-                    tools,
-                    scene,
-                    &cues,
-                    fps,
-                    frame_count,
-                    width,
-                    height,
-                    &preset.video_theme,
-                &target_clip,
-                )
-                .await?;
-                db::upsert_scene_artifact(
-                    pool,
-                    &clip_cache_key,
-                    run_id,
-                    &scene.scene_id,
-                    "clip",
-                    &target_clip.to_string_lossy(),
-                    clip_duration_ms,
-                    frame_count,
-                    &serde_json::to_string(&cues)?,
-                )
-                .await?;
-                (target_clip, false)
+                (PathBuf::from(path), true)
             }
-        } else {
-            let target_clip = clips_dir.join(format!("{}_{}.mp4", scene.scene_id, &clip_hash[..8]));
+            _ => (
+                clips_dir.join(format!("{}_{}.mp4", scene.scene_id, &clip_hash[..8])),
+                false,
+            ),
+        };
+
+        prepared.push(PreparedScene {
+            scene_idx,
+            scene,
+            wav_path,
+            frame_count,
+            clip_duration_ms,
+            cues,
+            reused_audio,
+            clip_cache_key,
+            target_clip,
+            reused_clip,
+        });
+    }
+
+    // Phase B: Render uncached Konva motion graphics clips in bounded parallel batches
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(3));
+    let mut join_set: tokio::task::JoinSet<Result<usize>> = tokio::task::JoinSet::new();
+    for p in &prepared {
+        if p.reused_clip {
+            continue;
+        }
+        let sem_c = sem.clone();
+        let tools_c = tools.clone();
+        let scene_c = p.scene.clone();
+        let cues_c = p.cues.clone();
+        let theme_c = preset.video_theme.clone();
+        let target_clip_c = p.target_clip.clone();
+        let scene_idx = p.scene_idx;
+        let frame_count = p.frame_count;
+        join_set.spawn(async move {
+            let _permit = sem_c.acquire_owned().await?;
             run_konva_scene_export(
-                tools,
-                scene,
-                &cues,
+                &tools_c,
+                &scene_c,
+                &cues_c,
                 fps,
                 frame_count,
                 width,
                 height,
-                &preset.video_theme,
-                &target_clip,
+                &theme_c,
+                scene_idx,
+                scene_total,
+                &target_clip_c,
             )
             .await?;
+            Ok(scene_idx)
+        });
+    }
+    while let Some(res) = join_set.join_next().await {
+        res??;
+    }
+
+    // Phase C: Persist newly rendered clips & assemble ordered entries
+    for p in prepared {
+        if !p.reused_clip {
             db::upsert_scene_artifact(
                 pool,
-                &clip_cache_key,
+                &p.clip_cache_key,
                 run_id,
-                &scene.scene_id,
+                &p.scene.scene_id,
                 "clip",
-                &target_clip.to_string_lossy(),
-                clip_duration_ms,
-                frame_count,
-                &serde_json::to_string(&cues)?,
+                &p.target_clip.to_string_lossy(),
+                p.clip_duration_ms,
+                p.frame_count,
+                &serde_json::to_string(&p.cues)?,
             )
             .await?;
-            (target_clip, false)
-        };
+        }
 
-        let metrics = audits.get(&scene.scene_id).cloned().unwrap_or(LayoutMetrics {
+        let metrics = audits.get(&p.scene.scene_id).cloned().unwrap_or(LayoutMetrics {
             min_font_size: 18.0,
             max_overlap_count: 0,
             out_of_bounds_count: 0,
         });
 
         let start_ms = cursor_ms;
-        let end_ms = cursor_ms + clip_duration_ms;
+        let end_ms = cursor_ms + p.clip_duration_ms;
         cursor_ms = end_ms;
 
-        padded_wavs.push(wav_path);
-        clip_paths.push(clip_path.clone());
+        padded_wavs.push(p.wav_path);
+        clip_paths.push(p.target_clip.clone());
 
         entries.push(VideoSceneEntry {
-            scene_id: scene.scene_id.clone(),
-            base_scene_id: scene.base_scene_id.clone(),
-            part_index: scene.part_index,
-            part_total: scene.part_total,
-            template: scene.template.clone(),
-            note_point_ids: scene.note_point_ids.clone(),
-            source_refs: scene.source_refs.clone(),
-            audio_duration_ms: clip_duration_ms,
-            frame_count,
+            scene_id: p.scene.scene_id.clone(),
+            base_scene_id: p.scene.base_scene_id.clone(),
+            part_index: p.scene.part_index,
+            part_total: p.scene.part_total,
+            template: p.scene.template.clone(),
+            note_point_ids: p.scene.note_point_ids.clone(),
+            source_refs: p.scene.source_refs.clone(),
+            audio_duration_ms: p.clip_duration_ms,
+            frame_count: p.frame_count,
             start_ms,
             end_ms,
-            cues,
-            clip_path: clip_path.to_string_lossy().to_string(),
-            reused_audio,
-            reused_clip,
+            cues: p.cues,
+            clip_path: p.target_clip.to_string_lossy().to_string(),
+            reused_audio: p.reused_audio,
+            reused_clip: p.reused_clip,
             layout_metrics: metrics,
         });
     }
@@ -390,7 +404,8 @@ pub async fn render_scene_plan_to_video(
     let concat_lines: Vec<String> = clip_paths
         .iter()
         .map(|p| {
-            let norm = p.to_string_lossy().replace('\\', "/").replace('\'', "'\\''");
+            let rel_or_abs = p.strip_prefix(output_dir).unwrap_or(p.as_path());
+            let norm = rel_or_abs.to_string_lossy().replace('\\', "/").replace('\'', "'\\''");
             format!("file '{norm}'")
         })
         .collect();
@@ -575,6 +590,8 @@ async fn run_konva_scene_export(
     width: u32,
     height: u32,
     theme: &str,
+    scene_index: usize,
+    scene_total: usize,
     output_mp4: &Path,
 ) -> Result<()> {
     let job_path = output_mp4.with_extension("render_job.json");
@@ -586,10 +603,12 @@ async fn run_konva_scene_export(
         width,
         height,
         theme,
+        scene_index,
+        scene_total,
         output_mp4: output_mp4.to_string_lossy().to_string(),
         ffmpeg_path: tools.ffmpeg.to_string_lossy().to_string(),
         show_captions: false,
-        snapshot_dir: None,
+        snapshot_dir: Some(output_mp4.with_extension("review").to_string_lossy().into_owned()),
     };
     tokio::fs::write(&job_path, serde_json::to_string_pretty(&job)?).await?;
 

@@ -1,4 +1,5 @@
 pub mod narration;
+pub mod model_audio;
 pub mod text;
 pub mod transcription;
 
@@ -39,7 +40,10 @@ pub fn ensure_provider_allowed(
     if offline_only
         && matches!(
             cfg.provider,
-            StageProviderKind::OpenAi | StageProviderKind::Gemini | StageProviderKind::CodexCli
+            StageProviderKind::OpenAi
+                | StageProviderKind::Gemini
+                | StageProviderKind::CodexCli
+                | StageProviderKind::Antigravity
         )
     {
         return Err(ProviderError::OfflinePolicyViolation(format!(
@@ -135,8 +139,24 @@ pub fn known_model_capabilities() -> Vec<ModelCapabilities> {
                 ThinkingLevel::Low,
                 ThinkingLevel::Medium,
                 ThinkingLevel::High,
+                ThinkingLevel::Xhigh,
             ],
             requires_credential: true,
+            local_only: false,
+        },
+        ModelCapabilities {
+            provider: StageProviderKind::Antigravity,
+            model: "gemini-4-hydrogen-low".to_string(),
+            label: "Antigravity CLI (gemini-4-hydrogen-low)".to_string(),
+            supports_thinking: true,
+            allowed_thinking_levels: vec![
+                ThinkingLevel::Off,
+                ThinkingLevel::Low,
+                ThinkingLevel::Medium,
+                ThinkingLevel::High,
+                ThinkingLevel::Xhigh,
+            ],
+            requires_credential: false,
             local_only: false,
         },
     ]

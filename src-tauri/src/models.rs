@@ -6,6 +6,8 @@ pub enum SceneTemplate {
     ConceptReveal,
     ProcessDiagram,
     Timeline,
+    ComparisonGrid,
+    RecapLadder,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -279,6 +281,7 @@ pub enum StageProviderKind {
     LocalOffline,
     Ollama,
     CodexCli,
+    Antigravity,
     OpenAi,
     Gemini,
 }
@@ -290,6 +293,7 @@ pub enum ThinkingLevel {
     Low,
     Medium,
     High,
+    Xhigh,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
