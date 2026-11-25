@@ -402,6 +402,7 @@
         </div>
 
         <div class="render-options"><label>Ratio <select bind:value={portrait}><option value={false}>16:9</option><option value={true}>9:16</option></select></label><label>Video theme <select bind:value={videoTheme}><option value="night">Night</option><option value="light">Light</option><option value="forest">Forest</option></select></label><label class="depth">Note depth <select bind:value={depth}><option value="brief">Brief</option><option value="standard">Standard</option><option value="deep">Deep</option></select></label></div>
+        {#if settings.video.provider!=="open_ai"}<small>Narration requires a video model with native audio output on a compatible endpoint.</small>{/if}
         <div class="input-actions">
           <ModelPicker label="Lecture video" bind:choice={settings.video}/>
           <button
@@ -1057,29 +1058,43 @@
   }
 
   /* ---------------- Responsive Styles ---------------- */
-  @media (max-width: 1080px) {
-    .lecture-screen {
-      grid-template-columns: minmax(135px,.5fr) minmax(0,1.2fr) minmax(0,1fr);
-      gap: 14px;
-    }
+  .lecture-screen > *{min-width:0}
+  .render-options,.input-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}.render-options{margin:4px 0 9px;font-size:13px}.render-options label,.input-actions label{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;max-width:100%}.render-options select{max-width:100%}
+  .sidebar-header{gap:4px;flex-wrap:wrap}.fold{padding:2px 8px}.collapsed .sidebar :is(.title-with-count,.icon-btn,.history-content){display:none}.collapsed .sidebar-header{padding:8px 4px}.coverage-card{grid-column:1/-1;order:5;display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0;padding:8px 12px;font-size:13px}.coverage-card progress{flex:1;min-width:60px}.coverage-card ul{max-height:60px;overflow:auto}
+
+  @media (min-width: 1181px) {
+    .lecture-screen{grid-template-columns:var(--recent) 10px minmax(0,1fr) 10px var(--portal);grid-template-rows:minmax(0,1fr);gap:0}
+    .portal-frame{flex:1;min-height:0}.explainer-video{height:100%;max-height:100%;object-fit:contain}
+    .portal-area{display:flex;flex-direction:column}.central-area,.portal-area{padding:0 4px}
+  }
+
+  @media (min-width: 901px) and (max-width: 1180px) {
+    .lecture-screen{grid-template-columns:clamp(140px,var(--recent),210px) 10px minmax(260px,1fr) 10px clamp(250px,var(--portal),42%);grid-template-rows:minmax(0,1fr);gap:0}
+    .portal-frame{flex:1;min-height:0}.explainer-video{height:100%;max-height:100%;object-fit:contain}
+    .portal-area{display:flex;flex-direction:column}.central-area,.portal-area{padding:0 4px}
   }
 
   @media (max-width: 900px) {
     .lecture-screen {
       grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 12px;
       min-height: auto;
     }
-    .sidebar {
-      max-height: 200px;
-    }
+    .lecture-screen :global(.divider){display:none}
+    .central-area{order:0}.portal-area{order:1}.sidebar{order:2;max-height:220px}
+    .input-card{min-height:220px}.lecture-textarea{min-height:170px}
     .portal-frame {
-      min-height: 220px;
+      min-height: 200px;
+      aspect-ratio: 16 / 9;
+      max-height: 48vh;
     }
+    .coverage-card{grid-column:auto}
   }
-  @media(max-width:900px){.central-area{order:0}.portal-area{order:1}.sidebar{order:2}.input-card{min-height:230px}.lecture-textarea{min-height:180px}}
-  .lecture-screen > *{min-width:0}
-  .render-options,.input-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.render-options{margin:4px 0 9px;font-size:13px}.render-options small{overflow-wrap:anywhere;color:var(--muted)}.input-actions label{white-space:nowrap}.sidebar-header{gap:4px;flex-wrap:wrap}.fold{padding:2px 8px}.collapsed .sidebar :is(.title-with-count,.icon-btn,.history-content){display:none}.collapsed .sidebar-header{padding:8px 4px}.coverage-card{grid-column:1/-1;order:5;display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0;padding:8px 12px;font-size:13px}.coverage-card progress{flex:1;min-width:60px}.coverage-card ul{max-height:60px;overflow:auto}
-@media(min-width:901px){.lecture-screen{grid-template-columns:var(--recent) 10px minmax(0,1fr) 10px var(--portal);grid-template-rows:minmax(0,1fr);gap:0}.portal-frame{flex:1;min-height:0}.explainer-video{height:100%;max-height:100%;object-fit:contain}.portal-area{display:flex;flex-direction:column}.central-area,.portal-area{padding:0 4px}}
-@media(max-width:900px){.lecture-screen :global(.divider){display:none}.coverage-card{grid-column:auto}}
+
+  @media (max-height: 740px) {
+    .portal-frame{min-height:170px}
+    .coverage-card{padding:6px 10px}
+  }
 .sidebar .sidebar-header{display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-start;padding:8px 6px;gap:4px}.sidebar .title-with-count{min-width:0;flex:1;gap:4px}.sidebar .sidebar-header h2{font-size:14px;overflow:hidden;text-overflow:ellipsis}.sidebar .fold,.sidebar .icon-btn{padding:4px;min-width:24px;height:28px;justify-content:center}.sr-only{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}.input-actions label{display:inline-flex;align-items:center;gap:6px;font-size:13px}.input-actions{column-gap:16px}.collapsed .sidebar .sidebar-header{justify-content:center}
 </style>

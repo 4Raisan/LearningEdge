@@ -13,8 +13,11 @@
     "windows": [
       {
         "title": "LearningEdge",
-        "width": 1280,
-        "height": 820,
+        "width": 1220,
+        "height": 760,
+        "minWidth": 720,
+        "minHeight": 560,
+        "center": true,
         "resizable": true
       }
     ],
