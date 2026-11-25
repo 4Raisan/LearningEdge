@@ -14,6 +14,6 @@ Turn the verified concepts into a narration script and storyboard. For every req
 
 ## Render and check the explainer
 
-Generate narration for each scene before rendering its motion graphics. Use the measured audio duration to determine the frame count and use sentence cues where a visual reveal needs to match a phrase. Generate captions and assemble the scenes. Split content across scenes when a template cannot display it at a readable size.
+Request native narration audio from the selected video model before rendering. Stop if its connection only supplies text, returns no audio, or its audio transcript differs from the approved script. Use the measured audio duration to determine the frame count and use sentence cues where a visual reveal needs to match a phrase. Generate captions and assemble the scenes. Split content across scenes when a template cannot display it at a readable size.
 
 Let the material determine the runtime, with no fixed time limit. Confirm that the required scenes are present in the finished video and resolve their references to video timestamps. A learner should be able to follow each required point from its source to its note and then to the video segment that explains it.

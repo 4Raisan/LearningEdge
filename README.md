@@ -13,7 +13,7 @@ Users can choose their models, thinking settings, note depth, and video preferen
 
 - **Desktop and storage.** Tauri 2 uses the system WebView. Rust runs the pipeline, Svelte and TypeScript handle the UI, and SQLite stores jobs and the personal knowledge graph in one local database.
 - **Local AI.** Ollama provides model management and structured output. Native whisper.cpp handles transcription on CPU, with Vulkan as a benchmark candidate. Download model weights separately to keep the installer smaller.
-- **Video.** Konva provides the Canvas 2D scene primitives for preview and export. FFmpeg encodes each scene so a retry can reuse completed footage. Installed Windows speech voices give the first version an offline narration option.
+- **Video.** Konva provides the Canvas 2D scene primitives for preview and export. FFmpeg encodes each scene so a retry can reuse completed footage. The selected video model supplies narration through a local or hosted OpenAI-compatible chat endpoint with audio output. The returned transcript must match each approved sentence. Measured WAV duration drives animation.
 
 Reuse Apalis with SQLite for durable jobs and retries, SQLx for database migrations, and Tauri sidecars to run native tools. LearningEdge owns the lecture workflow, coverage checks, and educational scene templates.
 
@@ -34,7 +34,7 @@ The default note and video settings use Ollama running locally with the `qwen3:4
 ## Subscription-backed video authoring
 
 - In **Providers**, sign in to Codex, check available models, and choose a model and thinking level separately for notes, video, or knowledge chat. The desktop worker runs Codex CLI with ChatGPT sign-in for concept extraction, outline review and scene coverage. These stages send the lecture to OpenAI. Install Codex CLI and run `codex login` first.
-- For **Antigravity Gemini 4 Hydrogen Low**, run `python scripts/hydrogen-video.py "lecture.txt"` directly in the project directory with Antigravity CLI signed in and the LearningEdge build dependencies installed. This sends the text to Google, checks the script against the source and passes it to the local renderer. The command prints the exported MP4 path. Google supports direct CLI scripting on consumer plans and excludes embedding that CLI in third-party apps. [Antigravity FAQ](https://antigravity.google/docs/faq)
+- **Antigravity Gemini 4 Hydrogen Low** supports script authoring and review through scripts/hydrogen-video.py with --script-only. Its CLI connection returns text. Narrated export requires native audio from the same selected model. See [scene direction](docs/motion-authoring.md).
 
 ## Notes and provider connections
 
