@@ -4,8 +4,8 @@
 
 - Choose models and thinking settings for supported stages. Display the settings available for the selected model.
 - Choose a local model or an API connection independently for each supported stage. OpenAI and Gemini keys are separate, and presets store credential references. See [provider modes](tech-stack.md#provider-modes) for subscription and billing details.
-- Set note depth and customize the structure and emphasis. Use shorter explanations at lower depths while preserving the concepts and qualifications needed to understand the lecture.
-- Customize video preferences such as visual style and narration. Coverage still determines the runtime.
+- Set note depth (`Brief`, `Standard`, or `Deep`) and customize the structure and emphasis. Use shorter explanations at lower depths while preserving the concepts and qualifications needed to understand the lecture.
+- Customize video preferences: choose **Landscape (1280 × 720)** or **Portrait (720 × 1280)**, select a visual palette (`night`, `light`, or `forest`), pick the narration engine (`Auto`, `Edge Neural TTS`, `Windows SAPI`, or `Native Model Audio`), and toggle programmatic transition/cue **Sound effects**. Coverage still determines the runtime.
 - Save a combination of settings as a reusable preset. Allow per-lecture overrides and record the settings used for each run. Defaults allow the workflow to run automatically.
 
 ## Personal knowledge graph

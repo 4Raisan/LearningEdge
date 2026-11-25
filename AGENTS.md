@@ -1,6 +1,6 @@
 # Working on LearningEdge
 
-For video authoring through the standalone Antigravity CLI, always explicitly select `--model gemini-4-hydrogen-low --effort low` for concept extraction, scripting, and coverage review. If Hydrogen is unavailable, stop and report it. Change this selection only at the user's request. Follow the [Motion Graphics Studio skill](skills/motion-graphics-studio/SKILL.md). Narration must come from the selected video model itself. A text-only connection can author scripts. LearningEdge measures and encodes the returned audio.
+For video authoring through the standalone Antigravity CLI, always explicitly select `--model gemini-4-hydrogen-low --effort low` for concept extraction, scripting, and coverage review. If Hydrogen is unavailable, stop and report it. Change this selection only at the user's request. Follow the [Motion Graphics Studio skill](skills/motion-graphics-studio/SKILL.md). Online narration defaults to Edge Neural TTS (`en-US-AvaMultilingualNeural` at `-4%` rate, FFmpeg `loudnorm=I=-16:TP=-1.5:LRA=11` to 48 kHz mono) with optional programmatic Rust SFX mixed at AAC 192 kbps; offline runs fall back to Windows SAPI, and OpenAI-compatible native model audio remains optional. LearningEdge measures and encodes the returned audio.
 
 Read the [README](README.md), [workflow](docs/workflow.md), [tech stack](docs/tech-stack.md), and [user controls](docs/user-controls.md) before changing the pipeline. The workflow defines product behavior. The stack guide explains the proposed defaults and the conditions for revisiting them.
 
