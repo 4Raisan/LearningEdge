@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { auditSceneLayout, paginateScenes } from "../frontend/lib/renderer/layout";
-import { renderSceneAtTime } from "../frontend/lib/renderer/templates";
+import { extractCanvasRgbaBuffer, renderSceneAtTime, type NativePixelCanvasLike } from "../frontend/lib/renderer/templates";
 import { THEME } from "../frontend/lib/renderer/theme";
 import type { SceneSpec, SentenceCue } from "../frontend/lib/renderer/types";
 
@@ -203,18 +203,21 @@ async function runRender(inputPath: string) {
     const timeMs = (frame / fps) * 1000;
     renderSceneAtTime(stage, job.scene, timeMs, job.cues, renderOpts);
 
-    const canvasEl = layer.getNativeCanvasElement() as unknown as {
-      getContext: (id: "2d") => CanvasRenderingContext2D;
-      toBuffer?: (mime: string) => Buffer;
-    };
-    const img = canvasEl.getContext("2d").getImageData(0, 0, width, height);
-    const buf = Buffer.from(img.data.buffer, img.data.byteOffset, img.data.byteLength);
+    const canvasEl = layer.getNativeCanvasElement() as unknown as NativePixelCanvasLike;
+    const buf = extractCanvasRgbaBuffer(canvasEl, width, height);
 
     await writeChunk(proc.stdin, buf);
 
     if (job.snapshot_dir && snapshotFrames.has(frame) && canvasEl.toBuffer) {
       const pngPath = path.join(job.snapshot_dir, `${job.scene.scene_id}_f${frame}.png`);
       await fs.writeFile(pngPath, canvasEl.toBuffer("image/png"));
+    }
+
+    if (frame % 30 === 29) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    if (frame % 60 === 59) {
+      (globalThis as { gc?: () => void }).gc?.();
     }
   }
 
